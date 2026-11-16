@@ -51,15 +51,29 @@ function database() {
 }
 async function transact(mode, action) {
   const db = await database();
-  try {
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, mode);
-      const request = action(tx.objectStore(STORE));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-      tx.onerror = () => reject(tx.error);
-    });
-  } finally { db.close(); }
+  return new Promise((resolve, reject) => {
+    let result;
+    let finished=false;
+    const finish=(error)=>{
+      if(finished)return;
+      finished=true;
+      db.close();
+      if(error)reject(error);else resolve(result);
+    };
+    let tx;
+    try {
+      tx=db.transaction(STORE,mode);
+      tx.oncomplete=()=>finish(null); // A música só é considerada salva após o commit.
+      tx.onabort=()=>finish(tx.error || new Error('Gravação local cancelada.'));
+      tx.onerror=()=>finish(tx.error || new Error('Erro no armazenamento local.'));
+      const request=action(tx.objectStore(STORE));
+      request.onsuccess=()=>{ result=request.result; };
+      request.onerror=()=>{ /* onabort gerencia o erro e fecha o banco */ };
+    } catch(error) {
+      try{tx?.abort();}catch{}
+      finish(error);
+    }
+  });
 }
 export async function listImports() { return transact('readonly', store => store.getAll()); }
 export async function saveImport(song) { return transact('readwrite', store => store.put(song)); }
