@@ -171,9 +171,9 @@ export class UploadedAudioEngine {
   constructor() { this.audio = null; this.url = null; this.paused = false; }
   async start(song, { volume = 0.7 } = {}) {
     this.stop();
-    if (!song.audioBlob) throw new Error('Arquivo de áudio não encontrado.');
-    this.url = URL.createObjectURL(song.audioBlob);
-    this.audio = new Audio(this.url);
+    if (!song.audioBlob && !song.audioUrl) throw new Error('Arquivo de áudio não encontrado.');
+    this.url = song.audioUrl ? null : URL.createObjectURL(song.audioBlob);
+    this.audio = new Audio(song.audioUrl || this.url);
     this.audio.preload = 'auto';
     this.audio.volume = Math.max(0, Math.min(1, volume));
     await this.audio.play(); // ato direto de usuário necessário para liberar reprodução

@@ -1,7 +1,7 @@
 {
   "name": "karaoke-show",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Karaokê offline-first para Web, TVs e futura versão Android TV",
   "type": "module",
   "scripts": {

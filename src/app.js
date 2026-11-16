@@ -5,6 +5,7 @@ import { OriginalAudioEngine, UploadedAudioEngine } from './audio.js';
 import { parseLrc, parseNoteMap, addNotesToLines, fileAudioDuration } from './importer.js';
 import { DEFAULT_SETTINGS, readLocal, persistLocal, listImports, saveImport, removeImport, cleanSinger } from './storage.js';
 import { installRemoteNavigation } from './remote.js';
+import { fetchCloudSongs, cloudUser, loginAdmin, logoutAdmin, verifyAdmin, uploadCloudSong } from './cloud.js';
 
 const app = document.getElementById('app');
 const data = readLocal();
@@ -15,7 +16,7 @@ const state = {
   activeQueueId: null, singerOnStage: '', isPaused: false, result: null,
   raf: null, lastSampleTime: -Infinity, lastVisualTime: -Infinity,
   lastLyricKey: '', overlay: '', toastTimer: null, installing: null,
-  importBusy: false
+  importBusy: false, cloudSongs: [], cloudError: '', cloudBusy: false, cloudAdmin: false
 };
 
 const ICONS = {
@@ -46,7 +47,7 @@ const ICONS = {
 };
 function svg(name, size = 20) { return `<svg aria-hidden="true" class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ICONS.music}</svg>`; }
 function esc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
-function songs() { return [...originals, ...state.imported]; }
+function songs() { return [...originals, ...state.cloudSongs, ...state.imported]; }
 function songFor(id) { return songs().find(song => song.id === id); }
 function selected() { return songFor(state.selectedId) || originals[0]; }
 function singersCount() { return new Set(data.results.map(r => r.singer)).size; }
@@ -72,7 +73,7 @@ function navItem(id, label, icon) { return `<button type="button" class="nav-lin
 function sidebar() {
   return `<aside class="sidebar"><div class="brand"><span class="brand-icon">${svg('mic', 26)}</span><span class="brand-name">KARAOKE<br/><strong>SHOW</strong></span></div>
     <div class="sidebar-label">MENU PRINCIPAL</div><nav aria-label="Menu principal" class="nav-list">
-    ${navItem('home', 'Início', 'home')}${navItem('songs', 'Explorar músicas', 'music')}${navItem('queue', 'Fila de apresentações', 'queue')}${navItem('ranking', 'Ranking', 'trophy')}${navItem('settings', 'Configurações', 'settings')}</nav>
+    ${navItem('home', 'Início', 'home')}${navItem('songs', 'Explorar músicas', 'music')}${navItem('queue', 'Fila de apresentações', 'queue')}${navItem('ranking', 'Ranking', 'trophy')}${navItem('cloud', 'Catálogo online', 'upload')}${navItem('settings', 'Configurações', 'settings')}</nav>
     <div class="sidebar-spacer"></div><div class="sidebar-promo"><span class="promo-spark">✦</span><strong>Sua sala, seu palco.</strong><p>Cante, pontue e desafie seus amigos. Sem assinatura.</p><button data-action="navigate" data-page="import" class="subtle-link">${svg('plus',16)} Importar música</button></div>
     <div class="side-footer">v0.1 • First Stage<br/>Funciona offline após instalar</div></aside>`;
 }
@@ -81,8 +82,9 @@ function topbar() {
 }
 function card(song, compact = false) {
   const imported = song.source === 'import';
+  const cloud = song.source === 'cloud';
   return `<article class="song-card ${compact ? 'compact' : ''}" style="--song-accent:${song.accent || '#ab77f6'};--song-glow:${song.glow || '#3d8fff'}">
-    <div class="cover"><span class="cover-badge">${imported ? 'ARQUIVO LOCAL' : 'ORIGINAL'}</span><span class="cover-symbol">${esc(song.icon || '♪')}</span><span class="cover-waves"><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
+    <div class="cover"><span class="cover-badge">${imported ? 'ARQUIVO LOCAL' : cloud ? 'CATÁLOGO ONLINE' : 'ORIGINAL'}</span><span class="cover-symbol">${esc(song.icon || '♪')}</span><span class="cover-waves"><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
     <div class="song-card-body"><div class="genre">${esc(song.genre || 'Minha música')} · ${timeLabel(song.duration)}</div><h3>${esc(song.title)}</h3><p>${esc(song.artist)}</p><div class="card-bottom"><span class="song-feature">${scoreable(song) ? '★ COM PONTUAÇÃO' : '♫ MODO APRESENTAÇÃO'}</span><button class="round-play" aria-label="Cantar ${esc(song.title)}" data-action="select-song" data-id="${esc(song.id)}">${svg('play', 21)}</button></div></div>
   </article>`;
 }
@@ -92,7 +94,7 @@ function renderHome() {
     <div class="hero-art" aria-hidden="true"><span class="halo halo-one"></span><span class="halo halo-two"></span><span class="hero-mic">${svg('mic', 124)}</span><div class="floating-note note-a">♪</div><div class="floating-note note-b">♫</div><div class="floating-note note-c">✧</div><div class="hero-eq">${[18,29,40,22,50,66,29,46,18,57,34,24,43,53,20].map(h=>`<i style="height:${h}%"></i>`).join('')}</div></div></div>
     <div class="metrics"><div class="metric">${svg('music', 24)}<div><b>${songs().length}</b><span>Músicas disponíveis</span></div></div><div class="metric">${svg('trophy', 24)}<div><b>${formatPoints(bestResult())}</b><span>Maior pontuação</span></div></div><div class="metric">${svg('user', 24)}<div><b>${singersCount()}</b><span>Vozes no ranking</span></div></div><div class="metric">${svg('queue', 24)}<div><b>${data.queue.length}</b><span>Na fila do show</span></div></div></div>
     <div class="row-heading"><div><span class="eyebrow">FEITO PARA CANTAR</span><h2>Escolha seu próximo hit</h2></div><button class="text-button" data-action="navigate" data-page="songs">Ver todas ${svg('arrow', 18)}</button></div>
-    <div class="song-grid">${originals.slice(0, 4).map(s => card(s)).join('')}</div>
+    <div class="song-grid">${songs().slice(0, 4).map(s => card(s)).join('')}</div>
     <div class="feature-strip"><div class="feature-mark">${svg('mic', 24)}</div><div><strong>${hasHistory ? 'Que tal bater seu recorde?' : 'Pontuação real, não aleatória.'}</strong><p>O sistema compara sua afinação ao mapa de notas. Para pontuar, conecte um microfone e escolha uma faixa com notas.</p></div><button class="btn btn-ghost" data-action="navigate" data-page="settings">Configurar áudio ${svg('arrow', 17)}</button></div>
   </section>`;
 }
@@ -100,7 +102,7 @@ function renderSongs() {
   const genres = ['Todas', ...new Set(songs().map(song => song.genre || 'Minhas músicas'))];
   const filtered = songs().filter(song => (state.filter === 'Todas' || song.genre === state.filter) && `${song.title} ${song.artist} ${song.genre}`.toLocaleLowerCase('pt-BR').includes(state.search.toLocaleLowerCase('pt-BR')));
   return `${header('Biblioteca de músicas', 'Encontre seu ritmo e prepare sua melhor apresentação.')}
-  <div class="library-tools"><label class="search-box">${svg('music')}<input id="song-search" autocomplete="off" type="search" placeholder="Buscar música, artista ou estilo…" value="${esc(state.search)}" aria-label="Buscar músicas"/></label><button class="btn btn-outline" data-action="navigate" data-page="import">${svg('upload',18)} Importar música</button></div>
+  <div class="library-tools"><label class="search-box">${svg('music')}<input id="song-search" autocomplete="off" type="search" placeholder="Buscar música, artista ou estilo…" value="${esc(state.search)}" aria-label="Buscar músicas"/></label><button class="btn btn-outline" data-action="navigate" data-page="import">${svg('upload',18)} Importar música</button><button class="btn btn-outline" data-action="navigate" data-page="cloud">Catálogo online</button></div>
   <div class="filters">${genres.map(g => `<button data-action="filter" data-filter="${esc(g)}" class="filter ${state.filter===g?'active':''}">${esc(g)}</button>`).join('')}</div>
   <div class="results-label">${filtered.length} ${filtered.length === 1 ? 'música encontrada' : 'músicas encontradas'}</div>
   ${filtered.length ? `<div class="song-grid">${filtered.map(song => card(song)).join('')}</div>` : `<div class="empty">${svg('music', 48)}<h3>Nenhuma música encontrada</h3><p>Tente outro termo ou importe seu próprio áudio com letra sincronizada.</p></div>`}`;
@@ -159,6 +161,29 @@ function renderImport() {
   <div class="mini-panel"><h3>E a pontuação?</h3><p>O arquivo JSON opcional fornece o tom esperado em MIDI para cada trecho. Sem ele, a apresentação não entra no ranking.</p><pre>[\n  {"start":4,"end":5,"midi":60},\n  {"start":5,"end":6,"midi":62}\n]</pre><p class="small-muted">Use somente músicas e letras que você tenha direito de reproduzir. Importações ficam armazenadas localmente no navegador.</p></div></aside></div>
   ${state.imported.length ? `<div class="row-heading"><h2>Músicas importadas (${state.imported.length})</h2></div><div class="imported-list">${state.imported.map(s=>`<div class="queue-row"><span class="queue-music-icon">${svg('music',23)}</span><div class="queue-row-content"><h3>${esc(s.title)}</h3><p>${esc(s.artist)} · ${timeLabel(s.duration)}</p></div><button class="btn btn-soft" data-action="select-song" data-id="${esc(s.id)}">Cantar</button><button class="icon-button danger" data-action="delete-import" data-id="${esc(s.id)}" aria-label="Excluir ${esc(s.title)}">${svg('trash',18)}</button></div>`).join('')}</div>` : ''}`;
 }
+function renderCloud() {
+  const user = cloudUser();
+  const status = state.cloudError ? `<p class="small-muted" role="status">${esc(state.cloudError)}</p>` : `<p class="small-muted">${state.cloudSongs.length} músicas disponíveis no site e no APK.</p>`;
+  const signin = `<form id="cloud-login-form" class="import-form"><label>E-mail autorizado<input type="email" name="email" class="text-input" autocomplete="username" required/></label><label>Senha<input type="password" name="password" class="text-input" autocomplete="current-password" required/></label><button type="submit" class="btn btn-primary" ${state.cloudBusy?'disabled':''}>Entrar</button></form>`;
+  const admin = `<p class="muted">Administrador: ${esc(user?.email)}</p><form id="cloud-upload-form" class="import-form">
+  <label>Título<input class="text-input" name="title" maxlength="100" required/></label>
+  <label>Artista<input class="text-input" name="artist" maxlength="100" required/></label>
+  <label>Gênero<input class="text-input" name="genre" maxlength="60" value="Sertanejo" required/></label>
+  <label>Áudio (até 25 MB)<input name="audio" type="file" accept="audio/*,.mp3,.ogg,.wav,.m4a,.mp4" required/></label>
+  <label>Letras LRC (opcional)<input name="lrc" type="file" accept=".lrc,text/plain"/></label>
+  <label>Mapa de notas JSON (opcional)<input name="notes" type="file" accept=".json,application/json"/></label>
+  <label><input type="checkbox" name="rights" required/> Tenho direitos para distribuir publicamente este áudio e suas letras.</label>
+  <button class="btn btn-primary" type="submit" ${state.cloudBusy?'disabled':''}>${state.cloudBusy?'Enviando…':'Publicar música para site e APK'}</button>
+  </form><button class="btn btn-outline" data-action="cloud-logout">Sair</button>`;
+  return `${header('Catálogo online','Biblioteca compartilhada entre site e Android TV.') }
+  <div class="import-columns"><section class="panel"><h2>${state.cloudAdmin?'Publicar música':'Músicas compartilhadas'}</h2>
+  <p class="muted">O catálogo é público; apenas administradores autorizados podem enviar arquivos.</p>
+  ${status}<button class="btn btn-outline" data-action="cloud-refresh">Atualizar catálogo</button>
+  ${state.cloudAdmin?admin:user?`<p class="muted">Conta sem permissão de administrador.</p><button class="btn btn-outline" data-action="cloud-logout">Sair</button>`:signin}
+  </section><aside class="import-notes"><div class="mini-panel"><h3>Mesmo catálogo em todos os aparelhos</h3><p>O site e o APK consultam o mesmo armazenamento. Os arquivos online exigem internet.</p></div>
+  <div class="mini-panel"><h3>Pontuação</h3><p>Uma música com LRC exibe letras; para pontuar é necessário enviar JSON de notas. MIDI/KAR terão suporte em versão posterior.</p></div>
+  <div class="mini-panel"><h3>Direitos autorais</h3><p>Publique apenas arquivos com autorização para reprodução e distribuição. Importações locais não são compartilhadas.</p></div></aside></div>`;
+}
 function renderPlayer() {
   const song = state.playingSong;
   const ranked = !!state.session;
@@ -189,7 +214,7 @@ function render() {
   else {
     const body = {
       home: renderHome, songs: renderSongs, queue: renderQueue, ranking: renderRanking,
-      settings: renderSettings, setup: renderSetup, import: renderImport
+      settings: renderSettings, setup: renderSetup, import: renderImport, cloud: renderCloud
     }[state.page] || renderHome;
     app.innerHTML = `<div class="app-layout">${sidebar()}<div class="main-wrapper">${topbar()}<main class="page-content" id="main">${body()}</main></div></div>`;
   }
@@ -402,6 +427,8 @@ async function handleImport(form) {
 async function handleAction(action, el) {
   switch (action) {
     case 'navigate': setPage(el.dataset.page); break;
+    case 'cloud-refresh': await refreshCloud(true); break;
+    case 'cloud-logout': logoutAdmin(); state.cloudAdmin = false; render(); break;
     case 'select-song': goSong(el.dataset.id); break;
     case 'filter': state.filter = el.dataset.filter; render(); break;
     case 'toggle-mic': await connectMic(); break;
@@ -443,6 +470,8 @@ app.addEventListener('click', event => {
 });
 app.addEventListener('submit', event => {
   if (event.target.id === 'import-form') { event.preventDefault(); handleImport(event.target); }
+  if (event.target.id === 'cloud-login-form') { event.preventDefault(); handleCloudLogin(event.target); }
+  if (event.target.id === 'cloud-upload-form') { event.preventDefault(); handleCloudUpload(event.target); }
 });
 app.addEventListener('input', event => {
   const target = event.target;
@@ -471,10 +500,34 @@ installRemoteNavigation({ back: () => {
 setInterval(() => {
   if (state.page === 'setup' || state.page === 'settings') updateMeter();
 }, 120);
+async function refreshCloud(feedback = false) {
+  try { state.cloudSongs = await fetchCloudSongs(); state.cloudError = ''; if (feedback) notify('Catálogo atualizado.'); }
+  catch (err) { state.cloudError = 'Catálogo indisponível: ' + err.message; if (feedback) notify(state.cloudError,'error'); }
+  render();
+}
+async function handleCloudLogin(form) {
+  if (state.cloudBusy) return;
+  const values = new FormData(form); state.cloudBusy = true;
+  try { await loginAdmin(String(values.get('email')),String(values.get('password'))); state.cloudAdmin = true; notify('Administrador autenticado.'); }
+  catch (err) { state.cloudAdmin = false; notify(err.message,'error'); }
+  finally { state.cloudBusy = false; render(); }
+}
+async function handleCloudUpload(form) {
+  if (state.cloudBusy) return;
+  const f = new FormData(form); state.cloudBusy = true;
+  try {
+    await uploadCloudSong({title:f.get('title'),artist:f.get('artist'),genre:f.get('genre'),
+      audio:f.get('audio'),lrc:f.get('lrc'),notes:f.get('notes'),rights:f.get('rights') === 'on'});
+    await refreshCloud(); notify('Música publicada para site e APK.');
+  } catch (err) { notify('Falha ao publicar: '+err.message,'error'); }
+  finally { state.cloudBusy = false; render(); }
+}
 async function boot() {
   try { state.imported = await listImports(); }
   catch (err) { notify(`Armazenamento de músicas indisponível: ${err.message}`, 'error'); }
   render();
+  await refreshCloud();
+  if (cloudUser()) { try { state.cloudAdmin = await verifyAdmin(); render(); } catch {} }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
