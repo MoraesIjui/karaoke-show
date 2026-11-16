@@ -309,6 +309,16 @@ function finishShow() {
 function updateLyrics(pos) {
   const song = state.playingSong;
   const lines = song.lines;
+  if (!lines?.length) {
+    if (state.lastLyricKey !== 'no-lyrics') {
+      document.getElementById('lyric-previous').textContent = '';
+      document.getElementById('lyric-current').textContent = '♪ Instrumental livre — solte sua voz ♪';
+      document.getElementById('lyric-next').textContent = 'Adicione uma letra LRC para acompanhar os versos.';
+      updatePitchLane(null, pos);
+      state.lastLyricKey = 'no-lyrics';
+    }
+    return;
+  }
   let index = lines.findIndex(line => pos >= line.start && pos < line.end);
   if (index < 0) {
     index = lines.findIndex(line => pos < line.start);

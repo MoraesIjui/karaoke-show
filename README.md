@@ -1,3 +1,39 @@
+# Karaoke Show v0.2 — Web, TV Box e catálogo compartilhado
+
+**Status:** site online; APK de teste compilado pelo GitHub Actions. O catálogo remoto usa Supabase Storage e PostgreSQL, com RLS para impedir envios de visitantes. Há quatro músicas originais, sem músicas comerciais de terceiros.
+
+## Site e APK
+
+- **Web:** https://moraesijui.github.io/karaoke-show/
+- **APK Android (debug):** GitHub > Actions > **Gerar APK de teste (Android e TV Box)** > execução concluída > **Artifacts** > `karaoke-show-tvbox-debug-apk`. Dentro do ZIP está `app-debug.apk`.
+- Compilação no GitHub Actions em Ubuntu, JDK 17, Gradle 8.9, Android SDK API 35, minSdk 23. **Android TV e microfone USB precisam de testes físicos**; o APK debug não se destina à Play Store.
+- O aplicativo inclui o site em um WebViewAssetLoader servido em origem HTTPS local, permitindo testar mesmo sem internet com as músicas originais. Músicas do catálogo online exigem conexão.
+
+## Catálogo de músicas na web e no APK
+
+1. O app consulta `public.ks_tracks` do Supabase e baixa os áudios de `ks-media`.
+2. O upload fica na tela **Catálogo online** e requer login administrativo do Supabase Auth; habilite o administrador conforme `supabase/ADMIN-SETUP.md`.
+3. São aceitos **MP3, WAV, OGG, M4A e MP4 áudio**, limite de 25 MB. Letras **LRC** e mapa de notas **JSON** opcionais. Sem mapa de notas, a música é executada sem pontuação; sem LRC, exibe modo instrumental livre.
+4. Não envie músicas/arranjos/letras de terceiros sem direitos para disponibilizá-los publicamente.
+5. **MIDI/KAR ainda não estão implementados** e estão planejados para outra versão.
+
+## Organização
+
+- `src/`: interface, motor de áudio, pontuação, armazenamento local e `cloud.js` (cliente Supabase).
+- `android/`: app Android WebView e permissões de microfone e seletor de arquivos.
+- `supabase/`: migration SQL e instruções para administrar a biblioteca.
+- `.github/workflows/deploy.yml`: GitHub Pages; `android-apk.yml`: APK de teste.
+
+## Validação
+
+```bash
+npm test && npm run check && npm run build
+```
+
+A distribuição na Play Store exige versão de produção, assinatura, análise de direitos autorais, testes físicos e cumprimento de políticas do Google.
+
+---
+
 # 🎤 Karaoke Show
 
 **Sua voz, seu palco.** Karaokê offline-first com afinação medida pelo microfone, letras sincronizadas, acompanhamento instrumental, fila de apresentações e ranking. Projeto elaborado pensando na futura transformação de TV Boxes em aparelhos de karaokê.
