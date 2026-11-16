@@ -1,5 +1,6 @@
 import { CLOUD } from './cloud-config.js';
 import { parseLrc, parseNoteMap, addNotesToLines, fileAudioDuration } from './importer.js';
+import { isMidiName, parseMidiFile, midiLyricsToLrc } from './midi.js';
 const KEY='karaoke-show-session-v1';
 const REST=CLOUD.url+'/rest/v1', STORAGE=CLOUD.url+'/storage/v1/object';
 function session(){try{return JSON.parse(localStorage.getItem(KEY)||'null');}catch{return null;}}
@@ -14,7 +15,7 @@ async function query(url,opts={}){
  return val;
 }
 async function authToken(){
- let s=session();if(!s)throw Error('Faça login para publicar.');
+ let s=session();if(!s)throw Error('Entre com uma conta autorizada para acessar as músicas da família.');
  if(Date.now()<(s.expires_at||0)-60000)return s.access_token;
  if(!s.refresh_token){save(null);throw Error('Sessão expirada.');}
  try {
@@ -80,41 +81,77 @@ export async function verifyAdmin(){
  const rows=await query(REST+'/ks_admins?select=user_id&limit=1',{token:await authToken()});
  return Array.isArray(rows)&&rows.length>0;
 }
-export async function loginAdmin(email,password){
+export async function verifyFamily(){
+ if(!session())return false;
+ const token=await authToken();
+ const rows=await query(REST+'/ks_family?select=user_id&limit=1',{token});
+ if(Array.isArray(rows) && rows.length)return true;
+ return verifyAdmin();
+}
+export async function loginFamily(email,password){
  const s=await query(CLOUD.url+'/auth/v1/token?grant_type=password',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
  save({...s,expires_at:Date.now()+s.expires_in*1000});
- if(!(await verifyAdmin())){save(null);throw Error('Esta conta não possui acesso de administrador.');}
- return s.user;
+ try {
+  if(!(await verifyFamily()))throw Error('Esta conta não está autorizada para a biblioteca familiar.');
+  return {user:s.user,admin:await verifyAdmin()};
+ } catch(err){save(null);throw err;}
+}
+// Alias compatível para integrações de administração anteriores.
+export async function loginAdmin(email,password){
+ const result=await loginFamily(email,password);
+ if(!result.admin){logoutAdmin();throw Error('Esta conta tem acesso familiar, mas não é administradora.');}
+ return result.user;
+}
+async function signedMediaUrl(path,token) {
+ const r=await query(STORAGE+'/sign/'+CLOUD.bucket+'/'+encodeURIComponent(path),{
+  method:'POST',token,headers:{'Content-Type':'application/json'},
+  body:JSON.stringify({expiresIn:7200})
+ });
+ const url=r?.signedURL||r?.signedUrl;
+ if(typeof url!=='string'||!url)throw Error('Não foi possível autorizar o arquivo privado.');
+ if(url.startsWith('http://')||url.startsWith('https://'))return url;
+ return CLOUD.url+(url.startsWith('/')?'':'/storage/v1/')+url;
 }
 export async function fetchCloudSongs(){
- const rows=await query(REST+'/ks_tracks?select=id,title,artist,genre,duration,storage_path,lyrics_lrc,notes_map&status=eq.published&order=created_at.desc&limit=500');
- return rows.map(r=>{
- const d=Number(r.duration),lines=r.lyrics_lrc?parseLrc(r.lyrics_lrc,d):[];
- const notes=Array.isArray(r.notes_map)?parseNoteMap(r.notes_map,d):[];
- return {id:'cloud-'+r.id,source:'cloud',title:r.title,artist:r.artist,genre:r.genre||'Catálogo online',
- mood:'Online',bpm:null,root:48,icon:'☁',accent:'#22c9b3',glow:'#5390f5',
- duration:d,lines:addNotesToLines(lines,notes),
- audioUrl:STORAGE+'/public/'+CLOUD.bucket+'/'+encodeURIComponent(r.storage_path)};
- });
+ if(!session())return [];
+ const token=await authToken();
+ if(!(await verifyFamily()))return [];
+ const rows=await query(REST+'/ks_tracks?select=id,title,artist,genre,duration,storage_path,lyrics_lrc,notes_map&status=eq.published&order=created_at.desc&limit=150',{token});
+ const list=[];
+ // Limitar pedidos simultâneos ao armazenamento: importante para TV Boxes antigas.
+ for(let i=0;i<rows.length;i+=6){
+  const batch=await Promise.all(rows.slice(i,i+6).map(async r=>{
+   const d=Number(r.duration),lines=r.lyrics_lrc?parseLrc(r.lyrics_lrc,d):[];
+   const notes=Array.isArray(r.notes_map)?parseNoteMap(r.notes_map,d):[];
+   const url=await signedMediaUrl(r.storage_path,token);
+   return {id:'cloud-'+r.id,source:'cloud',title:r.title,artist:r.artist,genre:r.genre||'Biblioteca da família',
+    mood:'Privado',bpm:null,root:48,icon:'♫',accent:'#22c9b3',glow:'#5390f5',
+    midi:isMidiName(r.storage_path),duration:d,lines:addNotesToLines(lines,notes),audioUrl:url};
+  }));
+  list.push(...batch);
+ }
+ return list;
 }
 export async function uploadCloudSong({title,artist,genre,audio,lrc,notes,rights}){
- if(!rights)throw Error('Confirme que possui direitos para distribuição.');
- if(!(audio instanceof File)||!audio.size||audio.size>25*1024*1024)throw Error('Selecione áudio com até 25 MB.');
+ if(!rights)throw Error('Confirme que pode compartilhar este arquivo com sua família.');
+ if(!(audio instanceof File)||!audio.size||audio.size>25*1024*1024)throw Error('Selecione um arquivo com até 25 MB.');
  const ext=audio.name.split('.').pop().toLowerCase();
- if(!['mp3','ogg','wav','m4a','mp4'].includes(ext))throw Error('São aceitos MP3, WAV, M4A, MP4 e OGG. MIDI/KAR ainda não.');
+ if(!['mp3','ogg','wav','m4a','mp4','mid','midi','kar'].includes(ext))throw Error('Formato aceito: MP3, WAV, OGG, M4A, MP4, MIDI ou KAR.');
  title=String(title||'').trim().slice(0,100);artist=String(artist||'').trim().slice(0,100);
  if(!title||!artist)throw Error('Informe título e artista.');
  if((lrc?.size||0)>256000||(notes?.size||0)>256000)throw Error('LRC/JSON acima de 256 KB.');
- const duration=await fileAudioDuration(audio);
+ const isMidi=isMidiName(audio.name);
+ const parsed=isMidi?await parseMidiFile(audio):null;
+ const duration=parsed?.duration || await fileAudioDuration(audio);
  if(duration<=0||duration>1800)throw Error('Duração inválida ou superior a 30 min.');
- const lyrics_lrc=lrc?.size?await lrc.text():'';
+ const lyrics_lrc=lrc?.size?await lrc.text():(parsed?midiLyricsToLrc(parsed.lines):'');
  if(lyrics_lrc&&!parseLrc(lyrics_lrc,duration).length)throw Error('LRC inválido.');
  const notes_map=notes?.size?parseNoteMap(JSON.parse(await notes.text()),duration):[];
  const storage_path=crypto.randomUUID()+'.'+ext;
  const token=await authToken();
  await query(STORAGE+'/'+CLOUD.bucket+'/'+storage_path,{method:'POST',token,body:audio,
- headers:{'Content-Type':audio.type||({mp3:'audio/mpeg',wav:'audio/wav',m4a:'audio/mp4',mp4:'audio/mp4',ogg:'audio/ogg'}[ext]),'x-upsert':'false'}});
+ headers:{'Content-Type':audio.type||(isMidi?'audio/midi':({mp3:'audio/mpeg',wav:'audio/wav',m4a:'audio/mp4',mp4:'audio/mp4',ogg:'audio/ogg'}[ext])),'x-upsert':'false'}});
  try {await query(REST+'/ks_tracks',{method:'POST',token,
  headers:{'Content-Type':'application/json',Prefer:'return=minimal'},
  body:JSON.stringify({title,artist,genre:String(genre||'Outros').slice(0,60),duration,storage_path,lyrics_lrc,notes_map,status:'published'})});}
