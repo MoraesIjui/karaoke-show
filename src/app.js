@@ -4,6 +4,7 @@ import { Microphone } from './pitch.js';
 import { OriginalAudioEngine, UploadedAudioEngine } from './audio.js';
 import { MidiAudioEngine } from './midi-audio.js';
 import { isMidiName, parseMidiFile } from './midi.js';
+import { importKaraokeZip } from './zip-batch.js';
 import { midi4youSuggestions, midi4youGenres, midi4youSongUrl, filterMidi4YouSongs } from './midi4you-catalog.js';
 import { parseLrc, parseNoteMap, addNotesToLines, fileAudioDuration } from './importer.js';
 import { DEFAULT_SETTINGS, readLocal, persistLocal, listImports, saveImport, removeImport, cleanSinger } from './storage.js';
@@ -19,7 +20,7 @@ const state = {
   activeQueueId: null, singerOnStage: '', isPaused: false, result: null,
   raf: null, lastSampleTime: -Infinity, lastVisualTime: -Infinity,
   lastLyricKey: '', overlay: '', toastTimer: null, installing: null,
-  importBusy: false, cloudSongs: [], cloudError: '', cloudBusy: false, cloudAdmin: false, cloudRecoveryMode: '', midi4youSearch: '', midi4youGenre: 'Todas'
+  importBusy: false, cloudSongs: [], cloudError: '', cloudBusy: false, cloudAdmin: false, cloudRecoveryMode: '', midi4youSearch: '', midi4youGenre: 'Todas', zipBusy: false, zipReport: null, zipProgress: ''
 };
 
 const ICONS = {
@@ -181,6 +182,32 @@ function renderMidi4You() {
     </section>`;
 }
 
+
+function renderZipReport() {
+  const r=state.zipReport;
+  if(!r)return '';
+  const rows=[['Importados',r.imported],['Duplicados',r.duplicates],['MK1 não compatíveis',r.unsupportedMK1],
+    ['Índices ALB',r.unsupportedALB],['Outros arquivos ignorados',r.ignored],['Falhas',r.failed]];
+  const categories=[
+    {key:'imported',title:'Importados'},{key:'duplicate',title:'Duplicados'},
+    {key:'mk1',title:'MK1 — não suportados'},{key:'alb',title:'ALB — índices de álbum'},
+    {key:'failed',title:'Falhas de leitura'},{key:'ignored',title:'Outros arquivos'}
+  ];
+  let html='<section class="zip-report panel" aria-label="Resultado da importação"><h2>Relatório da importação em lote</h2>';
+  html+='<p class="muted">Arquivo: '+esc(r.fileName)+' · '+r.total+' entradas, '+r.compatible+' MIDI/KAR identificados.</p>';
+  html+='<div class="zip-report-metrics">';
+  for(const [label,value] of rows)html+='<div class="zip-report-metric"><b>'+value+'</b><span>'+label+'</span></div>';
+  html+='</div><p class="small-muted">Somente os KAR/MIDI aprovados são gravados neste aparelho. Nada foi enviado à internet. Se faltar armazenamento, o relatório mostrará quais músicas não foram salvas.</p>';
+  for(const c of categories){
+    const items=r.items.filter(x=>x.status===c.key);
+    if(!items.length)continue;
+    html+='<details class="zip-report-details"><summary>'+c.title+' ('+items.length+')</summary><ul>';
+    for(const item of items)html+='<li><strong>'+esc(item.name)+'</strong>'+(item.reason?' — '+esc(item.reason):'')+'</li>';
+    html+='</ul></details>';
+  }
+  return html+'</section>';
+}
+
 function renderImport() {
   return `<button class="back-link" data-action="navigate" data-page="songs">${svg('back',17)} Voltar à biblioteca</button>
   ${header('Importar música', 'Traga seus próprios arquivos autorizados para o Karaoke Show.')}
@@ -193,6 +220,18 @@ function renderImport() {
   <aside class="import-notes"><div class="mini-panel"><div class="import-symbol">${svg('music',30)}</div><h3>Como funciona a letra?</h3><p>O arquivo LRC associa cada frase a um instante da música. Exemplo:</p><pre>[00:04.00]A primeira linha da música
 [00:08.00]E aqui começa a segunda</pre></div>
   <div class="mini-panel"><h3>E a pontuação?</h3><p>O arquivo JSON opcional fornece o tom esperado em MIDI para cada trecho. Sem ele, a apresentação não entra no ranking.</p><pre>[\n  {"start":4,"end":5,"midi":60},\n  {"start":5,"end":6,"midi":62}\n]</pre><p class="small-muted">Use somente músicas e letras que você tenha direito de reproduzir. Importações ficam armazenadas localmente no navegador.</p></div></aside></div>
+
+  <section class="panel zip-import-panel">
+    <h2>Importar um ZIP de músicas em lote</h2>
+    <p class="muted">Selecione um pacote .zip com arquivos .kar, .mid ou .midi (até 100 MB). O aplicativo reconhece artistas e títulos pelos nomes dos arquivos, verifica integridade, não repete músicas já importadas e mostra quais .mk1 e .alb não consegue abrir.</p>
+    <form id="zip-import-form" class="import-form">
+      <label>Pacote de músicas (.zip)<input name="archive" type="file" accept=".zip,application/zip,application/x-zip-compressed" required/></label>
+      <button type="submit" class="btn btn-primary" ${state.zipBusy?'disabled':''}>${svg('upload',19)} ${state.zipBusy?'Importando pacote…':'Importar músicas do ZIP'}</button>
+    </form>
+    <p id="zip-status" role="status" class="small-muted">${esc(state.zipProgress || 'Os arquivos ficam somente neste navegador ou TV Box. Eles não são enviados ao Supabase.')}</p>
+    <p class="small-muted">Atenção: limpar os dados do aplicativo pode apagar as músicas locais. Em TV Boxes antigas, prefira pacotes menores para não esgotar o armazenamento.</p>
+  </section>
+  ${renderZipReport()}
   ${state.imported.length ? `<div class="row-heading"><h2>Músicas importadas (${state.imported.length})</h2></div><div class="imported-list">${state.imported.map(s=>`<div class="queue-row"><span class="queue-music-icon">${svg('music',23)}</span><div class="queue-row-content"><h3>${esc(s.title)}</h3><p>${esc(s.artist)} · ${timeLabel(s.duration)}</p></div><button class="btn btn-soft" data-action="select-song" data-id="${esc(s.id)}">Cantar</button><button class="icon-button danger" data-action="delete-import" data-id="${esc(s.id)}" aria-label="Excluir ${esc(s.title)}">${svg('trash',18)}</button></div>`).join('')}</div>` : ''}`;
 }
 function renderCloud() {
@@ -439,6 +478,35 @@ async function togglePause() {
     if (button) { button.innerHTML = svg(state.isPaused ? 'play' : 'pause',25); button.setAttribute('aria-label',state.isPaused?'Retomar':'Pausar'); }
   } catch (err) { notify(`Não foi possível ${state.isPaused?'retomar':'pausar'}: ${err.message}`, 'error'); }
 }
+
+async function handleZipImport(form) {
+  if(state.zipBusy)return;
+  const archive=new FormData(form).get('archive');
+  if(!(archive instanceof File)||!archive.size||!/\\.zip$/i.test(archive.name)){
+    notify('Selecione um arquivo .zip válido.','error');return;
+  }
+  state.zipBusy=true;state.zipReport=null;state.zipProgress='Verificando o pacote…';render();
+  try{
+    const result=await importKaraokeZip(archive,{
+      existingSongs:state.imported,
+      save:saveImport,
+      onProgress(progress){
+        state.zipProgress='Verificados '+progress.processed+' de '+progress.relevant+' arquivos MIDI/KAR · '+progress.imported+' importados · '+progress.duplicates+' duplicados · '+progress.failed+' falhas.';
+        const status=document.getElementById('zip-status');
+        if(status)status.textContent=state.zipProgress;
+      }
+    });
+    state.zipReport=result;
+    state.imported=await listImports();
+    state.zipProgress='Importação concluída: '+result.imported+' músicas adicionadas, '+result.duplicates+' duplicadas, '+result.unsupportedMK1+' MK1 não suportados e '+result.failed+' falhas.';
+    notify('Pacote analisado: '+result.imported+' músicas KAR/MIDI adicionadas.');
+  }catch(error){
+    state.zipProgress='Falha na leitura do ZIP: '+(error?.message||'erro desconhecido');
+    notify(state.zipProgress,'error');
+    try{state.imported=await listImports();}catch{}
+  }finally{state.zipBusy=false;render();}
+}
+
 async function handleImport(form) {
   if (state.importBusy) return;
   const fields = new FormData(form);
@@ -527,6 +595,7 @@ app.addEventListener('click', event => {
 });
 app.addEventListener('submit', event => {
   if (event.target.id === 'import-form') { event.preventDefault(); handleImport(event.target); }
+  if (event.target.id === 'zip-import-form') { event.preventDefault(); handleZipImport(event.target); }
   if (event.target.id === 'cloud-login-form') { event.preventDefault(); handleCloudLogin(event.target); }
   if (event.target.id === 'cloud-recovery-email-form') { event.preventDefault(); handleRecoveryEmail(event.target); }
   if (event.target.id === 'cloud-recovery-password-form') { event.preventDefault(); handleRecoveryPassword(event.target); }
