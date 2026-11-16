@@ -1,0 +1,482 @@
+import { originals, formatDuration, formatPoints, noteName, hzToMidi } from './songs.js';
+import { ScoreSession, rankFromScore, expectedWordAt } from './scoring.js';
+import { Microphone } from './pitch.js';
+import { OriginalAudioEngine, UploadedAudioEngine } from './audio.js';
+import { parseLrc, parseNoteMap, addNotesToLines, fileAudioDuration } from './importer.js';
+import { DEFAULT_SETTINGS, readLocal, persistLocal, listImports, saveImport, removeImport, cleanSinger } from './storage.js';
+import { installRemoteNavigation } from './remote.js';
+
+const app = document.getElementById('app');
+const data = readLocal();
+const mic = new Microphone();
+const state = {
+  page: 'home', selectedId: originals[0].id, imported: [], search: '', filter: 'Todas',
+  showHelp: false, data, engine: null, session: null, playingSong: null,
+  activeQueueId: null, singerOnStage: '', isPaused: false, result: null,
+  raf: null, lastSampleTime: -Infinity, lastVisualTime: -Infinity,
+  lastLyricKey: '', overlay: '', toastTimer: null, installing: null,
+  importBusy: false
+};
+
+const ICONS = {
+  home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
+  music: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  queue: '<path d="M4 6h16M4 12h16M4 18h10"/><path d="m17 16 4 2-4 2z"/>',
+  trophy: '<path d="M8 21h8m-4-4v4M7 4h10v7a5 5 0 0 1-10 0zM7 6H4v3a4 4 0 0 0 4 4m9-7h3v3a4 4 0 0 1-4 4"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-1.9 1.9-.06-.06A1.65 1.65 0 0 0 16 18.4a1.65 1.65 0 0 0-.99 1.5V20H9v-.1a1.65 1.65 0 0 0-1-1.5 1.65 1.65 0 0 0-1.82.32l-.06.07-1.9-1.9.06-.07A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.5-.99H3V10h.1a1.65 1.65 0 0 0 1.5-1 1.65 1.65 0 0 0-.32-1.82l-.07-.06 1.9-1.9.07.06A1.65 1.65 0 0 0 8 5.6 1.65 1.65 0 0 0 9 4.1V4h6v.1a1.65 1.65 0 0 0 1 1.5 1.65 1.65 0 0 0 1.82-.32l.06-.07 1.9 1.9-.06.07A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.5 1h.1v4h-.1a1.65 1.65 0 0 0-1.5 1z"/>',
+  mic: '<rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-5 0h10"/>',
+  play: '<path d="m8 5 12 7-12 7z"/>',
+  pause: '<path d="M7 5v14M17 5v14"/>',
+  arrow: '<path d="m5 12 14 0m-6-6 6 6-6 6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  trash: '<path d="M4 7h16M10 3h4M6 7l1 14h10l1-14M10 11v6M14 11v6"/>',
+  upload: '<path d="M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4"/>',
+  back: '<path d="M19 12H5m6-6-6 6 6 6"/>',
+  check: '<path d="m5 12 5 5L20 7"/>',
+  fullscreen: '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>',
+  spark: '<path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z"/>',
+  volume: '<path d="M11 5 6 9H3v6h3l5 4zM15 9a5 5 0 0 1 0 6m3-9a9 9 0 0 1 0 12"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 11v6m0-10v1"/>',
+  offline: '<path d="m3 3 18 18M2 9a15 15 0 0 1 4-3m4-2a16 16 0 0 1 12 5M5 12a10 10 0 0 1 9-2m4 2 1 1M8 16a6 6 0 0 1 8 0m-4 4h.01"/>',
+  monitor: '<rect x="2" y="3" width="20" height="15" rx="2"/><path d="M8 22h8m-4-4v4"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  repeat: '<path d="m17 2 4 4-4 4M3 11V8a2 2 0 0 1 2-2h16M7 22l-4-4 4-4m14-1v3a2 2 0 0 1-2 2H3"/>',
+  moon: '<path d="M20 14a8 8 0 1 1-10-10 8 8 0 0 0 10 10z"/>'
+};
+function svg(name, size = 20) { return `<svg aria-hidden="true" class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ICONS.music}</svg>`; }
+function esc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function songs() { return [...originals, ...state.imported]; }
+function songFor(id) { return songs().find(song => song.id === id); }
+function selected() { return songFor(state.selectedId) || originals[0]; }
+function singersCount() { return new Set(data.results.map(r => r.singer)).size; }
+function bestResult() { return data.results.reduce((best, item) => Math.max(best, item.score || 0), 0); }
+function scoreable(song) {
+  if (!song?.lines?.length) return false;
+  const words = song.lines.flatMap(line => line.words);
+  return words.length > 0 && words.filter(word => Number.isFinite(word.midi)).length / words.length >= 0.8;
+}
+function save() { persistLocal(data); }
+function notify(message, variant = '') {
+  document.getElementById('toast')?.remove();
+  const toast = document.createElement('div');
+  toast.id = 'toast'; toast.className = `toast ${variant}`; toast.setAttribute('role', 'status');
+  toast.textContent = message;
+  document.body.append(toast);
+  clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => toast.remove(), 4000);
+}
+function timeLabel(s) { return formatDuration(s); }
+function header(title, subtitle = '') { return `<div class="section-header"><div><div class="eyebrow">${svg('spark', 15)} KARAOKE SHOW</div><h1>${title}</h1>${subtitle ? `<p class="muted">${subtitle}</p>` : ''}</div></div>`; }
+function navItem(id, label, icon) { return `<button type="button" class="nav-link ${state.page === id ? 'active' : ''}" data-action="navigate" data-page="${id}">${svg(icon)}<span>${label}</span></button>`; }
+function sidebar() {
+  return `<aside class="sidebar"><div class="brand"><span class="brand-icon">${svg('mic', 26)}</span><span class="brand-name">KARAOKE<br/><strong>SHOW</strong></span></div>
+    <div class="sidebar-label">MENU PRINCIPAL</div><nav aria-label="Menu principal" class="nav-list">
+    ${navItem('home', 'Início', 'home')}${navItem('songs', 'Explorar músicas', 'music')}${navItem('queue', 'Fila de apresentações', 'queue')}${navItem('ranking', 'Ranking', 'trophy')}${navItem('settings', 'Configurações', 'settings')}</nav>
+    <div class="sidebar-spacer"></div><div class="sidebar-promo"><span class="promo-spark">✦</span><strong>Sua sala, seu palco.</strong><p>Cante, pontue e desafie seus amigos. Sem assinatura.</p><button data-action="navigate" data-page="import" class="subtle-link">${svg('plus',16)} Importar música</button></div>
+    <div class="side-footer">v0.1 • First Stage<br/>Funciona offline após instalar</div></aside>`;
+}
+function topbar() {
+  return `<header class="topbar"><div class="topbar-location">${svg('monitor', 17)} <span>SEU PALCO DIGITAL</span></div><div class="topbar-end"><span class="connection ${navigator.onLine ? '' : 'offline'}">● ${navigator.onLine ? 'PRONTO PARA O SHOW' : 'MODO OFFLINE'}</span><button class="avatar" data-action="navigate" data-page="ranking" aria-label="Abrir ranking">${svg('user', 20)}</button></div></header>`;
+}
+function card(song, compact = false) {
+  const imported = song.source === 'import';
+  return `<article class="song-card ${compact ? 'compact' : ''}" style="--song-accent:${song.accent || '#ab77f6'};--song-glow:${song.glow || '#3d8fff'}">
+    <div class="cover"><span class="cover-badge">${imported ? 'ARQUIVO LOCAL' : 'ORIGINAL'}</span><span class="cover-symbol">${esc(song.icon || '♪')}</span><span class="cover-waves"><i></i><i></i><i></i><i></i><i></i><i></i></span></div>
+    <div class="song-card-body"><div class="genre">${esc(song.genre || 'Minha música')} · ${timeLabel(song.duration)}</div><h3>${esc(song.title)}</h3><p>${esc(song.artist)}</p><div class="card-bottom"><span class="song-feature">${scoreable(song) ? '★ COM PONTUAÇÃO' : '♫ MODO APRESENTAÇÃO'}</span><button class="round-play" aria-label="Cantar ${esc(song.title)}" data-action="select-song" data-id="${esc(song.id)}">${svg('play', 21)}</button></div></div>
+  </article>`;
+}
+function renderHome() {
+  const hasHistory = data.results.length > 0;
+  return `<section class="home"><div class="welcome"><div><span class="eyebrow">✧ BEM-VINDO AO SEU PALCO</span><h1>O show começa<br/>com a <span class="gradient-text">sua voz.</span></h1><p>Transforme qualquer tela em um grande palco. Escolha uma música, solte a voz e alcance a maior pontuação.</p><div class="hero-actions"><button class="btn btn-primary" data-action="navigate" data-page="songs">${svg('play', 19)} Começar a cantar ${svg('arrow', 19)}</button><button class="btn btn-outline" data-action="navigate" data-page="queue">${svg('queue', 19)} Montar uma fila</button></div><div class="hero-tag">${svg('check', 16)} Músicas originais • Offline • Sem cadastro</div></div>
+    <div class="hero-art" aria-hidden="true"><span class="halo halo-one"></span><span class="halo halo-two"></span><span class="hero-mic">${svg('mic', 124)}</span><div class="floating-note note-a">♪</div><div class="floating-note note-b">♫</div><div class="floating-note note-c">✧</div><div class="hero-eq">${[18,29,40,22,50,66,29,46,18,57,34,24,43,53,20].map(h=>`<i style="height:${h}%"></i>`).join('')}</div></div></div>
+    <div class="metrics"><div class="metric">${svg('music', 24)}<div><b>${songs().length}</b><span>Músicas disponíveis</span></div></div><div class="metric">${svg('trophy', 24)}<div><b>${formatPoints(bestResult())}</b><span>Maior pontuação</span></div></div><div class="metric">${svg('user', 24)}<div><b>${singersCount()}</b><span>Vozes no ranking</span></div></div><div class="metric">${svg('queue', 24)}<div><b>${data.queue.length}</b><span>Na fila do show</span></div></div></div>
+    <div class="row-heading"><div><span class="eyebrow">FEITO PARA CANTAR</span><h2>Escolha seu próximo hit</h2></div><button class="text-button" data-action="navigate" data-page="songs">Ver todas ${svg('arrow', 18)}</button></div>
+    <div class="song-grid">${originals.slice(0, 4).map(s => card(s)).join('')}</div>
+    <div class="feature-strip"><div class="feature-mark">${svg('mic', 24)}</div><div><strong>${hasHistory ? 'Que tal bater seu recorde?' : 'Pontuação real, não aleatória.'}</strong><p>O sistema compara sua afinação ao mapa de notas. Para pontuar, conecte um microfone e escolha uma faixa com notas.</p></div><button class="btn btn-ghost" data-action="navigate" data-page="settings">Configurar áudio ${svg('arrow', 17)}</button></div>
+  </section>`;
+}
+function renderSongs() {
+  const genres = ['Todas', ...new Set(songs().map(song => song.genre || 'Minhas músicas'))];
+  const filtered = songs().filter(song => (state.filter === 'Todas' || song.genre === state.filter) && `${song.title} ${song.artist} ${song.genre}`.toLocaleLowerCase('pt-BR').includes(state.search.toLocaleLowerCase('pt-BR')));
+  return `${header('Biblioteca de músicas', 'Encontre seu ritmo e prepare sua melhor apresentação.')}
+  <div class="library-tools"><label class="search-box">${svg('music')}<input id="song-search" autocomplete="off" type="search" placeholder="Buscar música, artista ou estilo…" value="${esc(state.search)}" aria-label="Buscar músicas"/></label><button class="btn btn-outline" data-action="navigate" data-page="import">${svg('upload',18)} Importar música</button></div>
+  <div class="filters">${genres.map(g => `<button data-action="filter" data-filter="${esc(g)}" class="filter ${state.filter===g?'active':''}">${esc(g)}</button>`).join('')}</div>
+  <div class="results-label">${filtered.length} ${filtered.length === 1 ? 'música encontrada' : 'músicas encontradas'}</div>
+  ${filtered.length ? `<div class="song-grid">${filtered.map(song => card(song)).join('')}</div>` : `<div class="empty">${svg('music', 48)}<h3>Nenhuma música encontrada</h3><p>Tente outro termo ou importe seu próprio áudio com letra sincronizada.</p></div>`}`;
+}
+function renderSetup() {
+  const song = selected();
+  const canScore = scoreable(song);
+  return `<div class="setup-layout"><button class="back-link" data-action="navigate" data-page="songs">${svg('back',17)} Voltar à biblioteca</button>
+    <div class="setup-main"><div class="setup-cover" style="--song-accent:${song.accent};--song-glow:${song.glow}"><div class="giant-note">${esc(song.icon || '♫')}</div><span>${esc(song.genre)}</span></div>
+    <div class="setup-info"><div class="eyebrow">PREPARE SUA APRESENTAÇÃO</div><h1>${esc(song.title)}</h1><p class="artist-large">${esc(song.artist)}</p><div class="setup-meta"><span>◷ ${timeLabel(song.duration)}</span><span>♫ ${song.bpm || '—'} BPM</span><span>✦ ${esc(song.genre)}</span></div>
+    <div class="form-card"><label class="field-label" for="singer">QUEM VAI CANTAR?</label><input id="singer" class="text-input" value="${esc(data.singer)}" maxlength="36" placeholder="Seu nome ou apelido"/>
+    <div class="mic-panel"><div class="mic-panel-icon">${svg('mic', 28)}</div><div class="mic-panel-text"><b>${mic.connected ? 'Microfone conectado!' : 'Microfone não conectado'}</b><span>${canScore ? (mic.connected ? 'Pronto para avaliar sua voz em tempo real.' : 'Ative para ganhar pontos por afinação.') : 'Essa música não tem mapa de notas completo; apresentação livre.'}</span></div><button class="btn ${mic.connected ? 'btn-soft' : 'btn-outline'}" data-action="toggle-mic">${mic.connected ? 'Desconectar' : 'Ativar microfone'}</button></div>
+    <div class="microphone-meter" ${mic.connected ? '' : 'hidden'}><span>${svg('volume',17)} Nível de entrada</span><div class="meter-track"><div class="meter-fill" id="mic-meter"></div></div><span id="mic-note">Aguardando voz…</span></div>
+    <div class="setup-callout">${svg('info', 18)} ${canScore ? 'Sem microfone, você pode cantar em modo livre, mas não recebe pontos. Para resultados melhores, prefira microfone USB e reduza o retorno dos alto-falantes.' : 'Faixas importadas precisam de um mapa de notas .json para disputar o ranking. A letra LRC por si só não permite medir afinação.'}</div>
+    <div class="setup-buttons"><button class="btn btn-outline" data-action="queue-add" data-id="${esc(song.id)}">${svg('plus',19)} Adicionar à fila</button><button class="btn btn-primary start-show" data-action="start" aria-label="Começar apresentação">${svg('play', 22)} ${canScore && mic.connected ? 'COMEÇAR COM PONTUAÇÃO' : 'COMEÇAR APRESENTAÇÃO'} ${svg('arrow', 21)}</button></div></div></div></div></div>`;
+}
+function renderQueue() {
+  const items = data.queue.map((item, index) => ({ ...item, song: songFor(item.songId), index }));
+  return `${header('Fila do show', 'Organize as apresentações e passe o microfone na ordem certa.')}
+  <div class="queue-actions"><button class="btn btn-primary" data-action="navigate" data-page="songs">${svg('plus',18)} Escolher música</button>${items.length ? `<button class="btn btn-outline" data-action="play-queue">${svg('play',18)} Preparar o próximo</button>` : ''}</div>
+  <div class="queue-list">${items.length ? items.map((item,i) => `<div class="queue-row"><span class="queue-number">${String(i+1).padStart(2,'0')}</span><div class="queue-music-icon">${svg('music',24)}</div><div class="queue-row-content"><h3>${esc(item.song?.title || 'Música removida')}</h3><p>${svg('user',14)} ${esc(item.singer)} · ${esc(item.song?.artist || 'Indisponível')}</p></div><span class="queue-duration">${timeLabel(item.song?.duration)}</span><button data-action="queue-up" data-queue="${esc(item.id)}" ${i===0?'disabled':''} class="icon-button" aria-label="Subir na fila">↑</button><button data-action="queue-down" data-queue="${esc(item.id)}" ${i===items.length-1?'disabled':''} class="icon-button" aria-label="Descer na fila">↓</button><button data-action="queue-remove" data-queue="${esc(item.id)}" class="icon-button danger" aria-label="Remover da fila">${svg('trash',18)}</button></div>`).join('') : `<div class="empty">${svg('queue',52)}<h3>Sua fila está vazia</h3><p>Escolha uma música, informe quem vai cantar e adicione à fila.</p><button class="btn btn-primary" data-action="navigate" data-page="songs">Ver músicas</button></div>`}</div>
+  <div class="tip-box">${svg('info',18)} A fila e o ranking ficam salvos neste aparelho, mesmo sem internet. Cada apresentação começa com um toque de quem estiver conduzindo o show.</div>`;
+}
+function renderRanking() {
+  const results = [...data.results].filter(r => r.rated).sort((a,b) => b.score - a.score).slice(0,30);
+  return `${header('Hall da fama', 'As melhores vozes que passaram por este palco.')}
+  <div class="ranking-top"><div class="stat-tile"><span>RECORDES REGISTRADOS</span><b>${data.results.length}</b></div><div class="stat-tile"><span>MAIOR PONTUAÇÃO</span><b>${formatPoints(bestResult())}</b></div><div class="stat-tile"><span>PARTICIPANTES</span><b>${singersCount()}</b></div></div>
+  ${results.length ? `<div class="ranking-list">${results.map((r,i) => `<div class="ranking-row"><div class="rank-index ${i<3?'podium':''}">${i===0?'🏆':i===1?'🥈':i===2?'🥉':String(i+1).padStart(2,'0')}</div><div class="ranking-name"><strong>${esc(r.singer)}</strong><span>${esc(r.songTitle)} · ${new Date(r.date).toLocaleDateString('pt-BR')}</span></div><span class="ranking-grade">${esc(rankFromScore(r.score).level)}</span><b class="ranking-score">${formatPoints(r.score)}</b></div>`).join('')}</div><button class="text-button clear-ranking" data-action="clear-ranking">${svg('trash',16)} Limpar ranking local</button>` : `<div class="empty">${svg('trophy',54)}<h3>O palco espera sua primeira estrela!</h3><p>Conecte um microfone e cante uma das músicas originais para registrar sua pontuação.</p><button class="btn btn-primary" data-action="navigate" data-page="songs">Cantar agora</button></div>`}`;
+}
+function renderSettings() {
+  const s = data.settings;
+  return `${header('Configurações', 'Ajuste o palco para o seu microfone, caixa de som e TV.')}
+    <div class="settings-grid"><section class="panel"><div class="panel-heading">${svg('volume',23)} <div><h2>Som e acompanhamento</h2><p>Controle o áudio que sai nas caixas de som.</p></div></div>
+    <div class="setting-row"><div><strong>Volume da música</strong><p>Afeta somente o acompanhamento, não o microfone.</p></div><label class="range-field"><input type="range" min="0" max="100" step="1" data-setting="volume" value="${Math.round(s.volume*100)}"/><output id="volume-label">${Math.round(s.volume*100)}%</output></label></div>
+    <div class="setting-row"><div><strong>Melodia de referência</strong><p>Toque leve das notas esperadas para orientar a voz.</p></div><label class="switch"><input type="checkbox" data-setting="guide" ${s.guide?'checked':''}/><span></span></label></div>
+    <div class="setting-row"><div><strong>Oitava flexível</strong><p>Aceita a mesma nota em uma oitava mais grave/aguda.</p></div><label class="switch"><input type="checkbox" data-setting="octaveFlexible" ${s.octaveFlexible?'checked':''}/><span></span></label></div></section>
+    <section class="panel"><div class="panel-heading">${svg('mic',23)}<div><h2>Captura de voz</h2><p>O som do microfone é analisado apenas neste dispositivo.</p></div></div>
+    <div class="setting-row"><div><strong>Microfone</strong><p id="mic-status">${mic.connected?'Conectado e analisando':'Nenhuma entrada ativa'}</p></div><button data-action="toggle-mic" class="btn btn-outline">${mic.connected?'Desconectar':'Testar microfone'}</button></div>
+    <div class="setting-row"><div><strong>Sensibilidade</strong><p>Se estiver pegando o som da TV, aumente o limite.</p></div><label class="range-field"><input data-setting="sensitivity" type="range" min="3" max="50" step="1" value="${Math.round(s.sensitivity*1000)}"/><output id="sensitivity-label">${Math.round(s.sensitivity*1000)}</output></label></div>
+    <div class="setting-row"><div><strong>Compensação de atraso</strong><p>Corrige a diferença entre microfone e reprodução.</p></div><label class="range-field"><input data-setting="latencyMs" type="range" min="-300" max="300" step="10" value="${s.latencyMs}"/><output id="latency-label">${s.latencyMs} ms</output></label></div>
+    <div class="setting-row"><div><strong>Reduzir animações</strong><p>Indicado para TV Boxes com processadores antigos.</p></div><label class="switch"><input type="checkbox" data-setting="reducedMotion" ${s.reducedMotion?'checked':''}/><span></span></label></div>
+    <div class="microphone-meter" ${mic.connected?'':'hidden'}><span>${svg('mic',17)} Sinal do microfone</span><div class="meter-track"><div class="meter-fill" id="mic-meter"></div></div><span id="mic-note">Aguardando voz…</span></div></section></div>
+    <section class="panel compatibility"><div class="panel-heading">${svg('monitor',23)}<div><h2>Compatibilidade e privacidade</h2><p>Preparado para navegador, PWA e evolução Android TV.</p></div></div><div class="compat-items"><span>${svg('check',18)} Sem cadastro obrigatório</span><span>${svg('check',18)} Sem enviar áudio a servidores</span><span>${svg('check',18)} Funciona sem internet após instalar</span><span>${svg('check',18)} Navegação por controle remoto</span></div><p class="small-muted">O microfone depende de permissão, HTTPS/localhost e suporte do dispositivo. Pontuação também depende de nota-alvo válida. Bluetooth e áudio via HDMI podem adicionar atraso.</p></section>`;
+}
+function renderImport() {
+  return `<button class="back-link" data-action="navigate" data-page="songs">${svg('back',17)} Voltar à biblioteca</button>
+  ${header('Importar música', 'Traga seus próprios arquivos autorizados para o Karaoke Show.')}
+  <div class="import-columns"><section class="panel"><h2>Nova música local</h2><p class="muted">Use um áudio instrumental (MP3, OGG, WAV ou M4A) e uma letra LRC sincronizada. Para pontuação, adicione também o mapa de notas JSON.</p>
+  <form id="import-form" class="import-form"><label>Título da música<input name="title" class="text-input" maxlength="80" required placeholder="Ex.: Minha canção"/></label><label>Artista<input name="artist" class="text-input" maxlength="80" required placeholder="Ex.: Meu grupo"/></label>
+  <label>Áudio <small>obrigatório</small><input type="file" name="audio" accept="audio/*,.mp3,.ogg,.wav,.m4a" required/></label>
+  <label>Letra sincronizada <small>.lrc obrigatório</small><input type="file" name="lrc" accept=".lrc,text/plain" required/></label>
+  <label>Mapa de notas <small>.json opcional</small><input type="file" name="notes" accept=".json,application/json"/></label>
+  <button type="submit" class="btn btn-primary" ${state.importBusy?'disabled':''}>${svg('upload',19)} ${state.importBusy?'Importando…':'Adicionar à biblioteca'}</button></form></section>
+  <aside class="import-notes"><div class="mini-panel"><div class="import-symbol">${svg('music',30)}</div><h3>Como funciona a letra?</h3><p>O arquivo LRC associa cada frase a um instante da música. Exemplo:</p><pre>[00:04.00]A primeira linha da música
+[00:08.00]E aqui começa a segunda</pre></div>
+  <div class="mini-panel"><h3>E a pontuação?</h3><p>O arquivo JSON opcional fornece o tom esperado em MIDI para cada trecho. Sem ele, a apresentação não entra no ranking.</p><pre>[\n  {"start":4,"end":5,"midi":60},\n  {"start":5,"end":6,"midi":62}\n]</pre><p class="small-muted">Use somente músicas e letras que você tenha direito de reproduzir. Importações ficam armazenadas localmente no navegador.</p></div></aside></div>
+  ${state.imported.length ? `<div class="row-heading"><h2>Músicas importadas (${state.imported.length})</h2></div><div class="imported-list">${state.imported.map(s=>`<div class="queue-row"><span class="queue-music-icon">${svg('music',23)}</span><div class="queue-row-content"><h3>${esc(s.title)}</h3><p>${esc(s.artist)} · ${timeLabel(s.duration)}</p></div><button class="btn btn-soft" data-action="select-song" data-id="${esc(s.id)}">Cantar</button><button class="icon-button danger" data-action="delete-import" data-id="${esc(s.id)}" aria-label="Excluir ${esc(s.title)}">${svg('trash',18)}</button></div>`).join('')}</div>` : ''}`;
+}
+function renderPlayer() {
+  const song = state.playingSong;
+  const ranked = !!state.session;
+  return `<div class="player-screen"><div class="player-aurora aurora-one"></div><div class="player-aurora aurora-two"></div>
+  <header class="player-header"><button class="player-exit" data-action="exit-player">${svg('back',20)} Sair</button><div class="player-song"><span class="player-song-icon" style="--song-accent:${song.accent}">${svg('music',22)}</span><div><strong>${esc(song.title)}</strong><span>${esc(song.artist)}</span></div></div><div class="player-right"><span class="stage-mode">${ranked ? `${svg('mic',16)} PONTUAÇÃO ATIVA` : 'MODO APRESENTAÇÃO'}</span><button class="player-icon-button" data-action="fullscreen" aria-label="Tela cheia">${svg('fullscreen',20)}</button></div></header>
+  <section class="player-stage"><div class="singer-label">${svg('spark',18)} NO PALCO: <b>${esc(state.singerOnStage)}</b></div>
+  <div id="countdown" class="countdown" hidden>3</div>
+  <div class="lyric-deck"><p id="lyric-previous" class="lyric-previous"></p><div id="lyric-current" class="lyric-current" aria-live="off"><span>O show vai começar…</span></div><p id="lyric-next" class="lyric-next"></p></div>
+  <div class="pitch-board"><div class="pitch-board-heading"><span>${svg('music',17)} GUIA DE MELODIA</span><span id="pitch-status">${ranked?'Encontre as notas no ritmo':'Acompanhe a letra e divirta-se'}</span></div><div id="pitch-lane" class="pitch-lane"></div></div>
+  <div class="stage-feedback" id="stage-feedback">${ranked?'Encontre o tom':'SOLTE A VOZ!'}</div></section>
+  <footer class="player-footer"><div class="score-panel"><span class="score-caption">SUA PONTUAÇÃO</span><b id="live-score">${ranked?'0':'—'}</b><span id="live-combo" class="combo">${ranked?'0 COMBO':'SEM PONTUAÇÃO'}</span></div>
+    <div class="player-transport"><div class="progress-line"><span id="player-current-time">0:00</span><div class="progress-track"><div id="progress-fill"></div></div><span>${timeLabel(song.duration)}</span></div><div class="transport-controls"><button data-action="restart" class="player-icon-button" title="Recomeçar" aria-label="Recomeçar música">${svg('repeat',22)}</button><button data-action="toggle-pause" id="pause-button" class="pause-main" aria-label="Pausar">${svg('pause',25)}</button><button data-action="exit-player" class="player-icon-button" title="Sair" aria-label="Encerrar apresentação">${svg('close',23)}</button></div></div>
+    <div class="mic-signal"><div id="signal-dot" class="signal-dot ${ranked?'active':''}"></div><div><b id="signal-label">${ranked?'MIC ATIVO':'MODO LIVRE'}</b><span id="live-pitch">${ranked?'Aguardando voz…':'Boa apresentação!'}</span></div></div></footer>
+  </div>`;
+}
+function renderResult() {
+  const result = state.result;
+  const rank = result.rated ? rankFromScore(result.score) : { emoji: '🎙️', label: 'O show é seu', level: '—' };
+  return `<div class="result-screen"><div class="result-glow"></div><button class="back-link result-back" data-action="navigate" data-page="home">${svg('back',18)} Voltar ao início</button><div class="result-content"><div class="eyebrow">${svg('spark',18)} FIM DA APRESENTAÇÃO</div><div class="result-medal">${rank.emoji}</div><h1>${result.rated?'SHOW DE BOLA!':'QUE SHOW!'}</h1><p class="result-subtitle">${esc(state.singerOnStage)}, ${result.rated?'seu desempenho entrou para a história!':'você comandou esse palco!'}</p>
+  <div class="result-score-box"><span>${result.rated?'PONTUAÇÃO FINAL':'APRESENTAÇÃO CONCLUÍDA'}</span><b>${result.rated?formatPoints(result.score):'♫'}</b><strong>${rank.label}</strong></div>
+  ${result.rated ? `<div class="result-metrics"><div><b>${result.accuracy}%</b><span>AFINAÇÃO MÉDIA</span></div><div><b>${result.coverage}%</b><span>TEMPO COM VOZ</span></div><div><b>${result.combo}×</b><span>MAIOR COMBO</span></div><div><b>${result.perfect}%</b><span>NOTAS PERFEITAS</span></div></div>` : `<p class="result-unrated">Sem pontuação competitiva: conecte um microfone e utilize uma música com mapa de notas para entrar no ranking.</p>`}
+  <p class="result-song">♫ ${esc(state.playingSong.title)} · ${esc(state.playingSong.artist)}</p><div class="result-actions"><button class="btn btn-outline" data-action="navigate" data-page="songs">${svg('music',18)} Outra música</button><button class="btn btn-primary" data-action="again">${svg('repeat',18)} Cantar novamente</button>${data.queue.length?`<button class="btn btn-outline" data-action="play-queue">${svg('queue',18)} Próximo da fila</button>`:''}</div></div></div>`;
+}
+function render() {
+  document.body.classList.toggle('reduced-motion', !!data.settings.reducedMotion);
+  if (state.page === 'player') app.innerHTML = renderPlayer();
+  else if (state.page === 'result') app.innerHTML = renderResult();
+  else {
+    const body = {
+      home: renderHome, songs: renderSongs, queue: renderQueue, ranking: renderRanking,
+      settings: renderSettings, setup: renderSetup, import: renderImport
+    }[state.page] || renderHome;
+    app.innerHTML = `<div class="app-layout">${sidebar()}<div class="main-wrapper">${topbar()}<main class="page-content" id="main">${body()}</main></div></div>`;
+  }
+  if (state.page === 'setup' || state.page === 'settings') updateMeter();
+}
+function setPage(page) {
+  if (state.page === 'player' && page !== 'player') stopShow();
+  if (state.page === 'setup' && page !== 'setup' && page !== 'player') mic.stop();
+  if (state.page === 'settings' && page !== 'settings') mic.stop();
+  state.page = page;
+  window.scrollTo(0,0);
+  render();
+}
+function goSong(id, queueId = null, singer = null) {
+  if (!songFor(id)) { notify('Essa música não está mais disponível.', 'error'); return; }
+  state.selectedId = id;
+  state.activeQueueId = queueId;
+  if (singer) data.singer = cleanSinger(singer);
+  setPage('setup');
+}
+function enqueue(songId) {
+  data.queue.push({ id: makeId(), songId, singer: cleanSinger(data.singer) });
+  save(); notify('Música adicionada à fila do show.'); render();
+}
+function makeId() { return globalThis.crypto?.randomUUID?.() || `ks-${Date.now()}-${Math.floor(Math.random()*1e6)}`; }
+function queueNext() {
+  const next = data.queue.find(item => songFor(item.songId));
+  if (!next) { notify('Não há músicas disponíveis na fila.'); setPage('queue'); return; }
+  goSong(next.songId, next.id, next.singer);
+}
+async function connectMic() {
+  if (mic.connected) { mic.stop(); notify('Microfone desconectado.'); render(); return; }
+  try {
+    await mic.connect(data.settings.preferredDeviceId, data.settings.sensitivity);
+    notify('Microfone conectado. Sua voz será analisada somente neste aparelho.');
+    render();
+  } catch (err) {
+    const reasons = {
+      NotAllowedError: 'Permissão negada. Autorize o microfone nas configurações do navegador.',
+      NotFoundError: 'Nenhum microfone encontrado. Conecte um microfone USB ou compatível.',
+      NotReadableError: 'O microfone está ocupado por outro aplicativo.'
+    };
+    notify(reasons[err.name] || err.message || 'Falha ao iniciar o microfone.', 'error');
+  }
+}
+function updateMeter() {
+  const meter = document.getElementById('mic-meter');
+  const note = document.getElementById('mic-note');
+  if (!meter || !mic.connected) return;
+  meter.style.width = `${Math.min(100,Math.round(mic.current.rms*650))}%`;
+  if (note) note.textContent = mic.current.hz ? noteName(hzToMidi(mic.current.hz)) : 'Aguardando voz…';
+}
+async function startShow() {
+  const song = selected();
+  data.singer = cleanSinger(document.getElementById('singer')?.value || data.singer);
+  save();
+  state.singerOnStage = data.singer;
+  const canScore = mic.connected && scoreable(song);
+  state.session = canScore ? new ScoreSession(song, data.settings) : null;
+  state.engine = song.source === 'original' ? new OriginalAudioEngine() : new UploadedAudioEngine();
+  state.playingSong = song;
+  state.isPaused = false; state.result = null; state.lastSampleTime = -Infinity;
+  state.lastVisualTime = -Infinity; state.lastLyricKey = '';
+  try {
+    // Reprodução somente após clique explícito. Importações iniciam sem contagem para respeitar autoplay.
+    await state.engine.start(song, { volume: data.settings.volume, guide: data.settings.guide, countdown: song.source === 'original' ? 3 : 0 });
+  } catch (err) {
+    state.engine?.stop(); state.engine = null; state.session = null;
+    notify(`Não foi possível iniciar o áudio: ${err.message}`, 'error'); return;
+  }
+  state.page = 'player'; render();
+  state.raf = requestAnimationFrame(tick);
+}
+function stopShow() {
+  if (state.raf) cancelAnimationFrame(state.raf);
+  state.raf = null;
+  state.engine?.stop(); state.engine = null; mic.stop();
+  state.isPaused = false;
+}
+function finishShow() {
+  if (state.page !== 'player') return;
+  state.result = state.session ? state.session.finish() : { rated: false };
+  if (state.result.rated) {
+    data.results.unshift({ ...state.result, singer: state.singerOnStage, songId: state.playingSong.id, songTitle: state.playingSong.title, date: new Date().toISOString() });
+    data.results = data.results.slice(0, 200);
+  }
+  if (state.activeQueueId) data.queue = data.queue.filter(item => item.id !== state.activeQueueId);
+  state.activeQueueId = null;
+  save();
+  stopShow(); state.page = 'result'; render();
+}
+function updateLyrics(pos) {
+  const song = state.playingSong;
+  const lines = song.lines;
+  let index = lines.findIndex(line => pos >= line.start && pos < line.end);
+  if (index < 0) {
+    index = lines.findIndex(line => pos < line.start);
+    if (index < 0) index = lines.length;
+  }
+  const active = lines[index];
+  const previous = lines[index-1];
+  const next = lines[index+1];
+  const currentKey = `${index}:${Math.floor(pos*12)}`;
+  // Atualiza o destaque palavra-a-palavra sem remontar o restante do aplicativo.
+  if (state.lastLyricKey !== currentKey) {
+    document.getElementById('lyric-previous').textContent = previous?.text || '';
+    document.getElementById('lyric-next').textContent = next?.text || '';
+    const current = document.getElementById('lyric-current');
+    if (active && pos >= active.start) {
+      current.innerHTML = active.words.map(word => `<span class="word ${pos>=word.end?'sung':pos>=word.start?'singing':''}">${esc(word.text)}</span>`).join(' ');
+    } else if (active) {
+      current.textContent = '♪  Prepare sua voz  ♪';
+    } else current.textContent = 'Muito obrigado pelo show!';
+    updatePitchLane(active, pos);
+    state.lastLyricKey = currentKey;
+  }
+}
+function updatePitchLane(line, pos) {
+  const lane = document.getElementById('pitch-lane');
+  if (!lane) return;
+  if (!line) { lane.innerHTML = '<span class="pitch-placeholder">♫</span>'; return; }
+  const words = line.words.filter(word => Number.isFinite(word.midi));
+  if (!words.length) { lane.innerHTML = '<span class="pitch-placeholder">♪ ♪ ♪</span>'; return; }
+  const min = Math.min(...words.map(w=>w.midi)) - 2;
+  const max = Math.max(...words.map(w=>w.midi)) + 2;
+  const span = Math.max(1, max-min);
+  lane.innerHTML = words.map(word => {
+    const left = 100*(word.start-line.start)/(line.end-line.start);
+    const width = 100*(word.end-word.start)/(line.end-line.start);
+    const bottom = 10 + 72*(word.midi-min)/span;
+    const active = pos >= word.start && pos < word.end ? 'note-now' : pos >= word.end ? 'note-past' : '';
+    return `<div class="pitch-note ${active}" style="left:${left.toFixed(2)}%;width:${Math.max(1,width-0.5).toFixed(2)}%;bottom:${bottom.toFixed(1)}%" title="${esc(noteName(word.midi))}"></div>`;
+  }).join('') + `<div class="pitch-cursor" style="left:${Math.min(100,Math.max(0,100*(pos-line.start)/(line.end-line.start))).toFixed(1)}%"></div>`;
+}
+function tick(now) {
+  if (state.page !== 'player' || !state.engine) return;
+  const pos = state.engine.position();
+  if (!state.isPaused && pos >= state.playingSong.duration) { finishShow(); return; }
+  const countdown = document.getElementById('countdown');
+  const deck = document.querySelector('.lyric-deck');
+  if (pos < 0 && !state.isPaused) {
+    countdown.hidden = false; countdown.textContent = Math.max(1, Math.ceil(-pos));
+    deck?.classList.add('dimmed');
+  } else { countdown.hidden = true; deck?.classList.remove('dimmed'); }
+  if (!state.isPaused && pos >= 0 && state.session && now - state.lastSampleTime >= 85) {
+    const shifted = Math.max(0, pos + data.settings.latencyMs / 1000);
+    state.session.sample(shifted, mic.current);
+    state.lastSampleTime = now;
+  }
+  if (now - state.lastVisualTime >= 65 || state.isPaused) {
+    const t = Math.min(Math.max(0, pos), state.playingSong.duration);
+    document.getElementById('progress-fill').style.width = `${100*t/state.playingSong.duration}%`;
+    document.getElementById('player-current-time').textContent = timeLabel(t);
+    updateLyrics(t);
+    const live = document.getElementById('live-score');
+    if (state.session) {
+      live.textContent = formatPoints(state.session.score);
+      document.getElementById('live-combo').textContent = `${state.session.combo}× COMBO`;
+      document.getElementById('stage-feedback').textContent = state.isPaused?'PAUSADO':state.session.lastFeedback;
+      document.getElementById('live-pitch').textContent = mic.current.hz ? noteName(hzToMidi(mic.current.hz)) : 'Aguardando voz…';
+      document.getElementById('signal-dot').style.opacity = mic.current.rms > data.settings.sensitivity ? '1' : '.3';
+    } else document.getElementById('stage-feedback').textContent = state.isPaused?'PAUSADO':'SOLTE A VOZ!';
+    state.lastVisualTime = now;
+  }
+  state.raf = requestAnimationFrame(tick);
+}
+async function togglePause() {
+  if (!state.engine) return;
+  try {
+    if (state.isPaused) await state.engine.resume(); else await state.engine.pause();
+    state.isPaused = !state.isPaused;
+    const button = document.getElementById('pause-button');
+    if (button) { button.innerHTML = svg(state.isPaused ? 'play' : 'pause',25); button.setAttribute('aria-label',state.isPaused?'Retomar':'Pausar'); }
+  } catch (err) { notify(`Não foi possível ${state.isPaused?'retomar':'pausar'}: ${err.message}`, 'error'); }
+}
+async function handleImport(form) {
+  if (state.importBusy) return;
+  const fields = new FormData(form);
+  const audio = fields.get('audio'), lrc = fields.get('lrc'), notesFile = fields.get('notes');
+  if (!(audio instanceof File) || !audio.size || !(lrc instanceof File) || !lrc.size) { notify('Selecione o áudio e o arquivo .lrc.', 'error'); return; }
+  if (audio.size > 150 * 1024 * 1024) { notify('Áudio acima do limite de 150 MB.', 'error'); return; }
+  if (lrc.size > 1024 * 1024 || (notesFile?.size || 0) > 1024 * 1024) { notify('LRC ou JSON acima do limite de 1 MB.', 'error'); return; }
+  state.importBusy = true; render();
+  try {
+    const duration = await fileAudioDuration(audio);
+    if (duration > 1800) throw new Error('Áudio acima do limite de 30 minutos.');
+    const lines = parseLrc(await lrc.text(), duration);
+    if (!lines.length) throw new Error('O arquivo LRC não contém linhas com tempo.');
+    let fullLines = lines;
+    if (notesFile instanceof File && notesFile.size) {
+      const map = parseNoteMap(JSON.parse(await notesFile.text()), duration);
+      fullLines = addNotesToLines(lines, map);
+    }
+    const song = {
+      id: `import-${makeId()}`, source: 'import',
+      title: String(fields.get('title')).trim().slice(0,80),
+      artist: String(fields.get('artist')).trim().slice(0,80),
+      genre: 'Minhas músicas', mood: 'Faixa local', bpm: null, root: 48,
+      accent: '#26bfcb', glow: '#7962ff', icon: '♪', duration,
+      lines: fullLines, audioBlob: audio
+    };
+    if (!song.title || !song.artist) throw new Error('Informe o título e o artista.');
+    await saveImport(song);
+    state.imported.push(song);
+    notify(`${song.title} foi adicionada. ${scoreable(song)?'Pontuação habilitada.':'Modo livre disponível.'}`);
+    state.page = 'songs'; state.search = ''; state.filter = 'Todas';
+  } catch (err) { notify(`Não foi possível importar: ${err.message}`, 'error'); }
+  finally { state.importBusy = false; render(); }
+}
+async function handleAction(action, el) {
+  switch (action) {
+    case 'navigate': setPage(el.dataset.page); break;
+    case 'select-song': goSong(el.dataset.id); break;
+    case 'filter': state.filter = el.dataset.filter; render(); break;
+    case 'toggle-mic': await connectMic(); break;
+    case 'start': await startShow(); break;
+    case 'exit-player': stopShow(); setPage('songs'); break;
+    case 'toggle-pause': await togglePause(); break;
+    case 'restart': { const oldId = state.playingSong.id; stopShow(); state.selectedId = oldId; state.page = 'setup'; render(); notify('Preparado para recomeçar.'); break; }
+    case 'fullscreen': {
+      try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen(); }
+      catch { notify('Tela cheia não está disponível neste navegador.', 'error'); }
+      break;
+    }
+    case 'queue-add': enqueue(el.dataset.id); setPage('queue'); break;
+    case 'play-queue': queueNext(); break;
+    case 'queue-remove': data.queue = data.queue.filter(item => item.id !== el.dataset.queue); save(); render(); break;
+    case 'queue-up': case 'queue-down': {
+      const index = data.queue.findIndex(item => item.id === el.dataset.queue);
+      const neighbor = index + (action === 'queue-up' ? -1 : 1);
+      if (index >= 0 && neighbor >= 0 && neighbor < data.queue.length) {
+        [data.queue[index],data.queue[neighbor]] = [data.queue[neighbor],data.queue[index]];
+        save(); render();
+      } break;
+    }
+    case 'again': goSong(state.playingSong.id); break;
+    case 'delete-import': {
+      const song = songFor(el.dataset.id);
+      if (!song || !confirm(`Remover "${song.title}" e seu áudio do armazenamento local?`)) break;
+      await removeImport(song.id);
+      state.imported = state.imported.filter(item => item.id !== song.id);
+      data.queue = data.queue.filter(item => item.songId !== song.id); save(); render(); notify('Música removida.'); break;
+    }
+    case 'clear-ranking': if (confirm('Apagar todas as pontuações deste aparelho?')) { data.results = []; save(); render(); } break;
+  }
+}
+app.addEventListener('click', event => {
+  const button = event.target.closest('[data-action]');
+  if (!button || button.disabled) return;
+  handleAction(button.dataset.action, button).catch(err => notify(`Falha: ${err.message}`, 'error'));
+});
+app.addEventListener('submit', event => {
+  if (event.target.id === 'import-form') { event.preventDefault(); handleImport(event.target); }
+});
+app.addEventListener('input', event => {
+  const target = event.target;
+  if (target.id === 'song-search') { state.search = target.value; const p = target.selectionStart; render(); const input = document.getElementById('song-search'); input?.focus(); input?.setSelectionRange(p,p); return; }
+  if (target.id === 'singer') { data.singer = cleanSinger(target.value); save(); return; }
+  if (!target.dataset.setting) return;
+  const key = target.dataset.setting;
+  if (['guide','octaveFlexible','reducedMotion'].includes(key)) data.settings[key] = target.checked;
+  else if (key === 'volume') data.settings[key] = Number(target.value)/100;
+  else if (key === 'sensitivity') data.settings[key] = Number(target.value)/1000;
+  else if (key === 'latencyMs') data.settings[key] = Number(target.value);
+  if (key === 'volume') document.getElementById('volume-label').textContent = `${target.value}%`;
+  if (key === 'sensitivity') document.getElementById('sensitivity-label').textContent = target.value;
+  if (key === 'latencyMs') document.getElementById('latency-label').textContent = `${target.value} ms`;
+  if (key === 'reducedMotion') document.body.classList.toggle('reduced-motion', target.checked);
+  save();
+});
+window.addEventListener('online', () => { if (state.page !== 'player') render(); });
+window.addEventListener('offline', () => { if (state.page !== 'player') render(); });
+installRemoteNavigation({ back: () => {
+  if (state.page === 'player') { stopShow(); setPage('songs'); }
+  else if (state.page === 'result') setPage('home');
+  else if (state.page === 'setup' || state.page === 'import') setPage('songs');
+  else if (state.page !== 'home') setPage('home');
+}});
+setInterval(() => {
+  if (state.page === 'setup' || state.page === 'settings') updateMeter();
+}, 120);
+async function boot() {
+  try { state.imported = await listImports(); }
+  catch (err) { notify(`Armazenamento de músicas indisponível: ${err.message}`, 'error'); }
+  render();
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+}
+boot();
