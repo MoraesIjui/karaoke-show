@@ -5,7 +5,7 @@ import { OriginalAudioEngine, UploadedAudioEngine } from './audio.js';
 import { parseLrc, parseNoteMap, addNotesToLines, fileAudioDuration } from './importer.js';
 import { DEFAULT_SETTINGS, readLocal, persistLocal, listImports, saveImport, removeImport, cleanSinger } from './storage.js';
 import { installRemoteNavigation } from './remote.js';
-import { fetchCloudSongs, cloudUser, loginAdmin, logoutAdmin, verifyAdmin, uploadCloudSong } from './cloud.js';
+import { fetchCloudSongs, cloudUser, loginAdmin, logoutAdmin, verifyAdmin, uploadCloudSong, sendPasswordRecovery, consumePasswordRecoveryRedirect, updatePasswordFromRecovery } from './cloud.js';
 
 const app = document.getElementById('app');
 const data = readLocal();
@@ -16,7 +16,7 @@ const state = {
   activeQueueId: null, singerOnStage: '', isPaused: false, result: null,
   raf: null, lastSampleTime: -Infinity, lastVisualTime: -Infinity,
   lastLyricKey: '', overlay: '', toastTimer: null, installing: null,
-  importBusy: false, cloudSongs: [], cloudError: '', cloudBusy: false, cloudAdmin: false
+  importBusy: false, cloudSongs: [], cloudError: '', cloudBusy: false, cloudAdmin: false, cloudRecoveryMode: ''
 };
 
 const ICONS = {
@@ -164,7 +164,10 @@ function renderImport() {
 function renderCloud() {
   const user = cloudUser();
   const status = state.cloudError ? `<p class="small-muted" role="status">${esc(state.cloudError)}</p>` : `<p class="small-muted">${state.cloudSongs.length} músicas disponíveis no site e no APK.</p>`;
-  const signin = `<form id="cloud-login-form" class="import-form"><label>E-mail autorizado<input type="email" name="email" class="text-input" autocomplete="username" required/></label><label>Senha<input type="password" name="password" class="text-input" autocomplete="current-password" required/></label><button type="submit" class="btn btn-primary" ${state.cloudBusy?'disabled':''}>Entrar</button></form>`;
+  const signin = `<form id="cloud-login-form" class="import-form"><label>E-mail autorizado<input type="email" name="email" class="text-input" autocomplete="username" required/></label><label>Senha<input type="password" name="password" class="text-input" autocomplete="current-password" required/></label><button type="submit" class="btn btn-primary" ${state.cloudBusy?'disabled':''}>Entrar</button></form><button type="button" class="btn btn-outline" data-action="cloud-recovery-toggle">Esqueci minha senha</button><p class="small-muted">A senha é da conta de usuário Supabase Auth, não a do painel Supabase.</p>`;
+  const recoverRequest = `<p class="muted">Enviaremos um link de recuperação por e-mail. Se sua conta for usada por outro aplicativo neste projeto Supabase, a troca de senha também afetará esse login.</p><form id="cloud-recovery-email-form" class="import-form"><label>E-mail cadastrado<input type="email" name="email" class="text-input" autocomplete="email" required/></label><button type="submit" class="btn btn-primary" ${state.cloudBusy?'disabled':''}>Enviar link de recuperação</button></form><button type="button" class="btn btn-outline" data-action="cloud-recovery-toggle">Voltar ao login</button>`;
+  const recoverSent = `<p class="muted" role="status">Se este e-mail estiver cadastrado, você receberá um link para definir uma nova senha. Confira também a pasta Spam. O link deve abrir este site.</p><button class="btn btn-outline" data-action="cloud-recovery-toggle">Voltar ao login</button>`;
+  const recoverUpdate = `<p class="muted">Link confirmado. Escolha uma nova senha de 10 a 72 caracteres.</p><form id="cloud-recovery-password-form" class="import-form"><label>Nova senha<input type="password" name="password" class="text-input" autocomplete="new-password" minlength="10" maxlength="72" required/></label><label>Confirme a senha<input type="password" name="confirm" class="text-input" autocomplete="new-password" minlength="10" maxlength="72" required/></label><button type="submit" class="btn btn-primary" ${state.cloudBusy?'disabled':''}>Salvar nova senha</button></form>`;
   const admin = `<p class="muted">Administrador: ${esc(user?.email)}</p><form id="cloud-upload-form" class="import-form">
   <label>Título<input class="text-input" name="title" maxlength="100" required/></label>
   <label>Artista<input class="text-input" name="artist" maxlength="100" required/></label>
@@ -179,7 +182,7 @@ function renderCloud() {
   <div class="import-columns"><section class="panel"><h2>${state.cloudAdmin?'Publicar música':'Músicas compartilhadas'}</h2>
   <p class="muted">O catálogo é público; apenas administradores autorizados podem enviar arquivos.</p>
   ${status}<button class="btn btn-outline" data-action="cloud-refresh">Atualizar catálogo</button>
-  ${state.cloudAdmin?admin:user?`<p class="muted">Conta sem permissão de administrador.</p><button class="btn btn-outline" data-action="cloud-logout">Sair</button>`:signin}
+  ${state.cloudRecoveryMode==='ready'?recoverUpdate:state.cloudRecoveryMode==='request'?recoverRequest:state.cloudRecoveryMode==='sent'?recoverSent:state.cloudAdmin?admin:user?`<p class="muted">Conta sem permissão de administrador.</p><button class="btn btn-outline" data-action="cloud-logout">Sair</button>`:signin}
   </section><aside class="import-notes"><div class="mini-panel"><h3>Mesmo catálogo em todos os aparelhos</h3><p>O site e o APK consultam o mesmo armazenamento. Os arquivos online exigem internet.</p></div>
   <div class="mini-panel"><h3>Pontuação</h3><p>Uma música com LRC exibe letras; para pontuar é necessário enviar JSON de notas. MIDI/KAR terão suporte em versão posterior.</p></div>
   <div class="mini-panel"><h3>Direitos autorais</h3><p>Publique apenas arquivos com autorização para reprodução e distribuição. Importações locais não são compartilhadas.</p></div></aside></div>`;
@@ -438,6 +441,7 @@ async function handleAction(action, el) {
   switch (action) {
     case 'navigate': setPage(el.dataset.page); break;
     case 'cloud-refresh': await refreshCloud(true); break;
+    case 'cloud-recovery-toggle': state.cloudRecoveryMode = state.cloudRecoveryMode ? '' : 'request'; state.cloudError=''; render(); break;
     case 'cloud-logout': logoutAdmin(); state.cloudAdmin = false; render(); break;
     case 'select-song': goSong(el.dataset.id); break;
     case 'filter': state.filter = el.dataset.filter; render(); break;
@@ -481,6 +485,8 @@ app.addEventListener('click', event => {
 app.addEventListener('submit', event => {
   if (event.target.id === 'import-form') { event.preventDefault(); handleImport(event.target); }
   if (event.target.id === 'cloud-login-form') { event.preventDefault(); handleCloudLogin(event.target); }
+  if (event.target.id === 'cloud-recovery-email-form') { event.preventDefault(); handleRecoveryEmail(event.target); }
+  if (event.target.id === 'cloud-recovery-password-form') { event.preventDefault(); handleRecoveryPassword(event.target); }
   if (event.target.id === 'cloud-upload-form') { event.preventDefault(); handleCloudUpload(event.target); }
 });
 app.addEventListener('input', event => {
@@ -522,6 +528,34 @@ async function handleCloudLogin(form) {
   catch (err) { state.cloudAdmin = false; notify(err.message,'error'); }
   finally { state.cloudBusy = false; render(); }
 }
+async function handleRecoveryEmail(form) {
+  if (state.cloudBusy) return;
+  state.cloudBusy = true;
+  try {
+    await sendPasswordRecovery(String(new FormData(form).get('email') || ''));
+    state.cloudRecoveryMode = 'sent'; state.cloudError = '';
+    notify('Solicitação enviada. Confira seu e-mail.');
+  } catch (err) {
+    state.cloudError = 'Não foi possível enviar o link: '+err.message;
+    notify(state.cloudError,'error');
+  } finally { state.cloudBusy=false; render(); }
+}
+async function handleRecoveryPassword(form) {
+  if (state.cloudBusy) return;
+  const values = new FormData(form);
+  const pass = String(values.get('password') || '');
+  if (pass !== String(values.get('confirm') || '')) { notify('As senhas não coincidem.','error'); return; }
+  state.cloudBusy = true;
+  try {
+    await updatePasswordFromRecovery(pass);
+    logoutAdmin();
+    state.cloudAdmin = false; state.cloudRecoveryMode = ''; state.cloudError = '';
+    notify('Senha alterada. Entre usando a nova senha.');
+  } catch (err) {
+    state.cloudError = 'Não foi possível alterar a senha: '+err.message;
+    notify(state.cloudError,'error');
+  } finally { state.cloudBusy=false; render(); }
+}
 async function handleCloudUpload(form) {
   if (state.cloudBusy) return;
   const f = new FormData(form); state.cloudBusy = true;
@@ -533,6 +567,12 @@ async function handleCloudUpload(form) {
   finally { state.cloudBusy = false; render(); }
 }
 async function boot() {
+  const recovery = consumePasswordRecoveryRedirect();
+  if (recovery) {
+    state.page = 'cloud';
+    state.cloudRecoveryMode = recovery.status === 'ready' ? 'ready' : 'request';
+    if (recovery.status === 'error') state.cloudError = recovery.message;
+  }
   try { state.imported = await listImports(); }
   catch (err) { notify(`Armazenamento de músicas indisponível: ${err.message}`, 'error'); }
   render();
