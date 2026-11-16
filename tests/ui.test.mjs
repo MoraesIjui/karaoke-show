@@ -44,6 +44,10 @@ test('navegação e telas renderizam sem lançar erros', async () => {
   assert.match(app.innerHTML,/Compensação de atraso/);
   click('navigate',{page:'import'});
   assert.match(app.innerHTML,/Nova música local/);
+  click('navigate',{page:'midi4you'});
+  assert.match(app.innerHTML,/Descobrir MIDI/);
+  assert.match(app.innerHTML,/60 Segundos/);
+  assert.match(app.innerHTML,/https:\/\/midi4you\.com\/song\/46871/);
  } finally {
   globalThis.setInterval=original.setInterval;
   globalThis.setTimeout=original.setTimeout;
