@@ -1,9 +1,9 @@
 /* Service Worker offline-first, escopo relativo ao diretório de publicação. */
-const CACHE_NAME = 'karaoke-show-shell-v6';
+const CACHE_NAME = 'karaoke-show-shell-v7';
 const FILES = [
   './', './index.html', './redefinir-senha.html', './styles.css', './manifest.webmanifest', './assets/icon.svg', './assets/icon-192.png', './assets/icon-512.png',
   './src/app.js','./src/audio.js','./src/importer.js','./src/pitch.js','./src/remote.js',
-  './src/scoring.js','./src/songs.js','./src/storage.js','./src/cloud.js','./src/cloud-config.js','./src/midi.js','./src/midi4you-catalog.js','./src/midi-audio.js','./src/password-reset.js'
+  './src/scoring.js','./src/songs.js','./src/storage.js','./src/cloud.js','./src/cloud-config.js','./src/midi.js','./src/zip-reader.js','./src/zip-batch.js','./src/midi4you-catalog.js','./src/midi-audio.js','./src/password-reset.js'
 ];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting()));
