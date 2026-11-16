@@ -28,7 +28,7 @@ let recoveryAccessToken = null;
 
 export async function sendPasswordRecovery(email) {
   const clean = String(email || '').trim();
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(clean)) throw Error('Informe um e-mail válido.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) throw Error('Informe um e-mail válido.');
   const url = CLOUD.url + '/auth/v1/recover?redirect_to=' + encodeURIComponent(RECOVERY_REDIRECT);
   await query(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:clean}) });
   // A resposta do Supabase não confirma se o e-mail existe.
