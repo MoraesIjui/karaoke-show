@@ -18,13 +18,13 @@ test('navegação e telas renderizam sem lançar erros', async () => {
  };
  globalThis.localStorage={getItem(){return null},setItem(){}};
  globalThis.window={scrollTo(){},addEventListener(){}};
- globalThis.location={protocol:'file:'};
+ globalThis.location={protocol:'file:',hash:'',search:'',pathname:'/karaoke-show/'};
  globalThis.setInterval=()=>1;
  globalThis.setTimeout=()=>1;
  try {
   await import('../src/app.js');
   // Permite que a promise IndexedDB rejeitada passe por boot().
-  await new Promise(resolve => process.nextTick(resolve));
+  await new Promise(resolve => setImmediate(resolve));
   assert.match(app.innerHTML,/O show começa/);
   function click(action,other={}){
    handlers.click({target:{closest(){return {dataset:{action,...other},disabled:false}}}});
