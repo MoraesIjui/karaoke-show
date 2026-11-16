@@ -117,12 +117,12 @@ test('ZIP: nomes são convertidos em título e artista',()=>{
   assert.equal(guessKaraokeMetadata('SEM_ARTISTA.KAR').title,'SEM ARTISTA');
 });
 
-test('ZIP: rejeita arquivo sem índice e protege contra entradas falsas gigantes',()=>{
+test('ZIP: rejeita arquivo sem índice e protege contra entradas falsas gigantes',async()=>{
   assert.throws(()=>inspectZip(Buffer.from('teste')),/incompleto/);
   const zip=makeZip([{name:'Teste.kar',data:midi}]);
   const centralOffset=zip.readUInt32LE(zip.length-6);
   zip.writeUInt32LE(26*1024*1024,centralOffset+24);
   const entries=inspectZip(zip);
   assert.equal(entries[0].reason,'Arquivo MIDI acima de 25 MB.');
-  assert.rejects(extractZipEntry(zip,entries[0]),/25 MB/);
+  await assert.rejects(extractZipEntry(zip,entries[0]),/25 MB/);
 });
