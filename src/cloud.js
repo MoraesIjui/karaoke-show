@@ -23,7 +23,7 @@ async function authToken(){
  }catch{save(null);throw Error('Sessão expirada. Entre novamente.');}
 }
 /** Recuperação feita sempre pelo site; o APK compartilha a senha da conta Auth. */
-const RECOVERY_REDIRECT = 'https://moraesijui.github.io/karaoke-show/';
+const RECOVERY_REDIRECT = 'https://moraesijui.github.io/karaoke-show/redefinir-senha.html';
 let recoveryAccessToken = null;
 
 export async function sendPasswordRecovery(email) {
@@ -34,17 +34,31 @@ export async function sendPasswordRecovery(email) {
   // A resposta do Supabase não confirma se o e-mail existe.
   return true;
 }
-export function consumePasswordRecoveryRedirect() {
-  if (!globalThis.location?.hash) return null;
-  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
-  const error = params.get('error_description') || params.get('error');
-  const isRecovery = params.get('type') === 'recovery';
-  if (!isRecovery && !error) return null;
-  // Elimina credenciais de URL/histórico imediatamente.
-  history.replaceState(null, '', location.pathname + location.search);
-  if (error) return { status:'error', message:'O link de recuperação expirou ou é inválido. Solicite outro.' };
-  const token = params.get('access_token');
-  if (!token) return { status:'error', message:'O link não trouxe uma sessão válida. Solicite outro.' };
+export async function consumePasswordRecoveryRedirect() {
+  if (!globalThis.location) return null;
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const search = new URLSearchParams(location.search);
+  const type = hash.get('type') || search.get('type');
+  const error = hash.get('error_description') || search.get('error_description') || hash.get('error') || search.get('error');
+  const hasCallback = type === 'recovery' || !!error || hash.has('access_token') || search.has('token_hash') || search.has('code');
+  if (!hasCallback) return null;
+  // Retira credenciais da barra de endereço antes de fazer qualquer pedido.
+  history.replaceState(null, '', location.pathname);
+  if (error) return { status:'error', message:'Link expirado, inválido ou não autorizado. Solicite outro.' };
+  if (type !== 'recovery') return { status:'error', message:'O retorno não foi identificado como recuperação de senha. Solicite outro link.' };
+  let token = hash.get('access_token');
+  if (!token && search.has('token_hash')) {
+    try {
+      const result = await query(CLOUD.url + '/auth/v1/verify', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({type:'recovery', token_hash:search.get('token_hash')})
+      });
+      token = result?.access_token;
+    } catch {
+      return { status:'error', message:'Código de recuperação inválido ou expirado. Solicite outro link.' };
+    }
+  }
+  if (!token) return { status:'error', message:'O link não contém um token de recuperação compatível. Solicite um novo link.' };
   recoveryAccessToken = token;
   return { status:'ready' };
 }
