@@ -22,6 +22,43 @@ async function authToken(){
  s={...next,expires_at:Date.now()+next.expires_in*1000};save(s);return s.access_token;
  }catch{save(null);throw Error('Sessão expirada. Entre novamente.');}
 }
+/** Recuperação feita sempre pelo site; o APK compartilha a senha da conta Auth. */
+const RECOVERY_REDIRECT = 'https://moraesijui.github.io/karaoke-show/';
+let recoveryAccessToken = null;
+
+export async function sendPasswordRecovery(email) {
+  const clean = String(email || '').trim();
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(clean)) throw Error('Informe um e-mail válido.');
+  const url = CLOUD.url + '/auth/v1/recover?redirect_to=' + encodeURIComponent(RECOVERY_REDIRECT);
+  await query(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email:clean}) });
+  // A resposta do Supabase não confirma se o e-mail existe.
+  return true;
+}
+export function consumePasswordRecoveryRedirect() {
+  if (!globalThis.location?.hash) return null;
+  const params = new URLSearchParams(location.hash.replace(/^#/, ''));
+  const error = params.get('error_description') || params.get('error');
+  const isRecovery = params.get('type') === 'recovery';
+  if (!isRecovery && !error) return null;
+  // Elimina credenciais de URL/histórico imediatamente.
+  history.replaceState(null, '', location.pathname + location.search);
+  if (error) return { status:'error', message:'O link de recuperação expirou ou é inválido. Solicite outro.' };
+  const token = params.get('access_token');
+  if (!token) return { status:'error', message:'O link não trouxe uma sessão válida. Solicite outro.' };
+  recoveryAccessToken = token;
+  return { status:'ready' };
+}
+export async function updatePasswordFromRecovery(password) {
+  if (!recoveryAccessToken) throw Error('A recuperação expirou. Solicite outro link.');
+  const value = String(password || '');
+  if (value.length < 10 || value.length > 72) throw Error('Use uma senha de 10 a 72 caracteres.');
+  await query(CLOUD.url+'/auth/v1/user', {
+    method:'PUT', token:recoveryAccessToken,
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:value})
+  });
+  recoveryAccessToken = null;
+}
+
 export function cloudUser(){return session()?.user||null;}
 export function logoutAdmin(){save(null);}
 export async function verifyAdmin(){
