@@ -4,6 +4,7 @@ import { Microphone } from './pitch.js';
 import { OriginalAudioEngine, UploadedAudioEngine } from './audio.js';
 import { MidiAudioEngine } from './midi-audio.js';
 import { isMidiName, parseMidiFile } from './midi.js';
+import { midi4youSuggestions, midi4youGenres, midi4youSongUrl, filterMidi4YouSongs } from './midi4you-catalog.js';
 import { parseLrc, parseNoteMap, addNotesToLines, fileAudioDuration } from './importer.js';
 import { DEFAULT_SETTINGS, readLocal, persistLocal, listImports, saveImport, removeImport, cleanSinger } from './storage.js';
 import { installRemoteNavigation } from './remote.js';
@@ -18,7 +19,7 @@ const state = {
   activeQueueId: null, singerOnStage: '', isPaused: false, result: null,
   raf: null, lastSampleTime: -Infinity, lastVisualTime: -Infinity,
   lastLyricKey: '', overlay: '', toastTimer: null, installing: null,
-  importBusy: false, cloudSongs: [], cloudError: '', cloudBusy: false, cloudAdmin: false, cloudRecoveryMode: ''
+  importBusy: false, cloudSongs: [], cloudError: '', cloudBusy: false, cloudAdmin: false, cloudRecoveryMode: '', midi4youSearch: '', midi4youGenre: 'Todas'
 };
 
 const ICONS = {
@@ -75,7 +76,7 @@ function navItem(id, label, icon) { return `<button type="button" class="nav-lin
 function sidebar() {
   return `<aside class="sidebar"><div class="brand"><span class="brand-icon">${svg('mic', 26)}</span><span class="brand-name">KARAOKE<br/><strong>SHOW</strong></span></div>
     <div class="sidebar-label">MENU PRINCIPAL</div><nav aria-label="Menu principal" class="nav-list">
-    ${navItem('home', 'Início', 'home')}${navItem('songs', 'Explorar músicas', 'music')}${navItem('queue', 'Fila de apresentações', 'queue')}${navItem('ranking', 'Ranking', 'trophy')}${navItem('cloud', 'Catálogo online', 'upload')}${navItem('settings', 'Configurações', 'settings')}</nav>
+    ${navItem('home', 'Início', 'home')}${navItem('songs', 'Explorar músicas', 'music')}${navItem('queue', 'Fila de apresentações', 'queue')}${navItem('ranking', 'Ranking', 'trophy')}${navItem('cloud', 'Biblioteca da família', 'upload')}${navItem('midi4you', 'Descobrir MIDI', 'music')}${navItem('settings', 'Configurações', 'settings')}</nav>
     <div class="sidebar-spacer"></div><div class="sidebar-promo"><span class="promo-spark">✦</span><strong>Sua sala, seu palco.</strong><p>Cante, pontue e desafie seus amigos. Sem assinatura.</p><button data-action="navigate" data-page="import" class="subtle-link">${svg('plus',16)} Importar música</button></div>
     <div class="side-footer">v0.1 • First Stage<br/>Funciona offline após instalar</div></aside>`;
 }
@@ -149,6 +150,37 @@ function renderSettings() {
     <div class="microphone-meter" ${mic.connected?'':'hidden'}><span>${svg('mic',17)} Sinal do microfone</span><div class="meter-track"><div class="meter-fill" id="mic-meter"></div></div><span id="mic-note">Aguardando voz…</span></div></section></div>
     <section class="panel compatibility"><div class="panel-heading">${svg('monitor',23)}<div><h2>Compatibilidade e privacidade</h2><p>Preparado para navegador, PWA e evolução Android TV.</p></div></div><div class="compat-items"><span>${svg('check',18)} Sem cadastro obrigatório</span><span>${svg('check',18)} Sem enviar áudio a servidores</span><span>${svg('check',18)} Funciona sem internet após instalar</span><span>${svg('check',18)} Navegação por controle remoto</span></div><p class="small-muted">O microfone depende de permissão, HTTPS/localhost e suporte do dispositivo. Pontuação também depende de nota-alvo válida. Bluetooth e áudio via HDMI podem adicionar atraso.</p></section>`;
 }
+
+/** Descoberta editorial; não inclui nem reproduz arquivos de terceiros. */
+function renderMidi4You() {
+  const list = filterMidi4YouSongs({search:state.midi4youSearch,genre:state.midi4youGenre});
+  const filters = midi4youGenres.map(genre=>`<button type="button" class="midi4you-chip ${state.midi4youGenre===genre?'active':''}" data-action="midi4you-filter" data-genre="${esc(genre)}" aria-pressed="${state.midi4youGenre===genre}">${esc(genre)}</button>`).join('');
+  const cards = list.map(song=>`
+    <article class="midi4you-item">
+      <div class="midi4you-symbol" aria-hidden="true">♫</div>
+      <div class="midi4you-description"><span class="midi4you-genre">${esc(song.genre)} · ${song.versions} ${song.versions===1?'versão':'versões'} MIDI</span>
+        <h3>${esc(song.title)}</h3><p>${esc(song.artist)}</p>
+        <span class="midi4you-lyrics">${song.lyrics===true?'✓ Letra incorporada informada':song.lyrics===false?'Letra não incorporada':'Letra: confira no MIDI4You'}</span>
+      </div>
+      <a class="btn btn-outline midi4you-link" href="${midi4youSongUrl(song)}" target="_blank" rel="noopener noreferrer" aria-label="Ver ${esc(song.title)} no MIDI4You">Ver no MIDI4You ↗</a>
+    </article>`).join('');
+  return `${header('Descobrir MIDI','Sugestões de músicas brasileiras disponíveis para procurar no MIDI4You.')}
+    <section class="midi4you-intro panel">
+      <div class="eyebrow">REPERTÓRIO PARA A FAMÍLIA</div>
+      <p>Pesquise na seleção de ${midi4youSuggestions.length} títulos encontrados no MIDI4You. Abra a página original, escolha a versão e baixe pelo próprio site com sua conta gratuita. Depois use <strong>Importar música</strong> para adicionar o arquivo MIDI/KAR a este aparelho.</p>
+      <p class="small-muted">Estes cartões são apenas referências de catálogo; os arquivos não estão no Karaoke Show. Não existe download automático, reprodução sem o arquivo nem distribuição pelo GitHub.</p>
+      <div class="midi4you-actions"><button type="button" class="btn btn-primary" data-action="navigate" data-page="import">${svg('upload',18)} Importar MIDI/KAR</button>
+      <a href="https://midi4you.com/country/97-brasil" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Catálogo Brasil ↗</a></div>
+    </section>
+    <section aria-label="Buscar músicas no MIDI4You">
+      <label class="midi4you-search-label" for="midi4you-search">Buscar entre as sugestões</label>
+      <input id="midi4you-search" type="search" class="text-input midi4you-search" autocomplete="off" placeholder="Música, cantor ou estilo…" value="${esc(state.midi4youSearch)}"/>
+      <div class="midi4you-filters" role="group" aria-label="Filtrar por gênero">${filters}</div>
+      <p class="small-muted" role="status">${list.length} de ${midi4youSuggestions.length} sugestões</p>
+      <div class="midi4you-grid">${cards || '<p class="muted">Nenhuma música nesta seleção. Tente outro artista ou gênero.</p>'}</div>
+    </section>`;
+}
+
 function renderImport() {
   return `<button class="back-link" data-action="navigate" data-page="songs">${svg('back',17)} Voltar à biblioteca</button>
   ${header('Importar música', 'Traga seus próprios arquivos autorizados para o Karaoke Show.')}
@@ -221,7 +253,7 @@ function render() {
   else {
     const body = {
       home: renderHome, songs: renderSongs, queue: renderQueue, ranking: renderRanking,
-      settings: renderSettings, setup: renderSetup, import: renderImport, cloud: renderCloud
+      settings: renderSettings, setup: renderSetup, import: renderImport, cloud: renderCloud, midi4you: renderMidi4You
     }[state.page] || renderHome;
     app.innerHTML = `<div class="app-layout">${sidebar()}<div class="main-wrapper">${topbar()}<main class="page-content" id="main">${body()}</main></div></div>`;
   }
@@ -451,6 +483,7 @@ async function handleAction(action, el) {
   switch (action) {
     case 'navigate': setPage(el.dataset.page); break;
     case 'cloud-refresh': await refreshCloud(true); break;
+    case 'midi4you-filter': state.midi4youGenre=el.dataset.genre || 'Todas'; render(); break;
     case 'cloud-recovery-toggle': state.cloudRecoveryMode = state.cloudRecoveryMode ? '' : 'request'; state.cloudError=''; render(); break;
     case 'cloud-logout': logoutAdmin(); state.cloudAdmin = false; state.cloudSongs=[]; state.cloudError=''; render(); break;
     case 'select-song': goSong(el.dataset.id); break;
@@ -501,6 +534,7 @@ app.addEventListener('submit', event => {
 });
 app.addEventListener('input', event => {
   const target = event.target;
+  if (target.id === 'midi4you-search') { state.midi4youSearch=target.value; const pos=target.selectionStart; render(); const input=document.getElementById('midi4you-search'); input?.focus(); input?.setSelectionRange(pos,pos); return; }
   if (target.id === 'song-search') { state.search = target.value; const p = target.selectionStart; render(); const input = document.getElementById('song-search'); input?.focus(); input?.setSelectionRange(p,p); return; }
   if (target.id === 'singer') { data.singer = cleanSinger(target.value); save(); return; }
   if (!target.dataset.setting) return;
