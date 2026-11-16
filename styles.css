@@ -22,3 +22,26 @@
 @supports not (background:color-mix(in srgb,red,blue)){.cover{background:linear-gradient(135deg,var(--song-accent),#1a1731 78%)}}
 
 .setup-buttons{display:flex;gap:10px;align-items:stretch}.setup-buttons>.btn-outline{font-size:11px;white-space:nowrap;min-width:130px}.setup-buttons>.start-show{flex:1;min-width:0}@media(max-width:560px){.setup-buttons{flex-direction:column}.setup-buttons>.btn-outline{min-height:44px}}
+
+
+/* Descobrir MIDI: seleção de links para catálogo externo, sem arquivos de terceiros. */
+.midi4you-intro{margin:0 0 22px;padding:24px}
+.midi4you-intro p{max-width:950px;margin:11px 0;color:var(--muted)}
+.midi4you-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.midi4you-actions a{text-decoration:none}
+.midi4you-search-label{display:block;font-size:13px;color:var(--muted);margin-bottom:8px;font-weight:600}
+.midi4you-search{width:100%;max-width:600px;min-height:46px}
+.midi4you-filters{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 12px}
+.midi4you-chip{background:var(--surface-2);border:1px solid var(--border);border-radius:20px;padding:9px 13px;font-size:13px;min-height:41px}
+.midi4you-chip.active{background:#6741b8;border-color:#a97cff;color:white}
+.midi4you-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:15px}
+.midi4you-item{display:flex;align-items:center;gap:13px;flex-wrap:wrap;border:1px solid var(--border);background:var(--surface);border-radius:15px;padding:16px}
+.midi4you-symbol{flex:none;display:grid;place-items:center;width:48px;height:48px;border-radius:12px;background:#302248;color:#d6b4ff;font-size:28px}
+.midi4you-description{min-width:0;flex:1 1 190px}
+.midi4you-description h3{font-size:16px;line-height:1.25;margin:5px 0 4px}
+.midi4you-description p{font-size:13px;color:var(--muted);margin:0 0 5px}
+.midi4you-genre{font-size:11px;color:#c6abf6}
+.midi4you-lyrics{display:block;font-size:11px;color:var(--muted)}
+.midi4you-link{width:100%;text-align:center;text-decoration:none;font-size:12px;min-height:41px;display:flex;align-items:center;justify-content:center}
+@media(max-width:1000px){.midi4you-grid{grid-template-columns:1fr}}
+@media(max-width:500px){.midi4you-intro{padding:16px}.midi4you-symbol{width:42px;height:42px}.midi4you-description h3{font-size:15px}}
