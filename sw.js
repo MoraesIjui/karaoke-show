@@ -1,5 +1,5 @@
 /* Service Worker offline-first, escopo relativo ao diretório de publicação. */
-const CACHE_NAME = 'karaoke-show-shell-v2';
+const CACHE_NAME = 'karaoke-show-shell-v3';
 const FILES = [
   './', './index.html', './styles.css', './manifest.webmanifest', './assets/icon.svg', './assets/icon-192.png', './assets/icon-512.png',
   './src/app.js','./src/audio.js','./src/importer.js','./src/pitch.js','./src/remote.js',
