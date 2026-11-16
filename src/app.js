@@ -482,7 +482,7 @@ async function togglePause() {
 async function handleZipImport(form) {
   if(state.zipBusy)return;
   const archive=new FormData(form).get('archive');
-  if(!(archive instanceof File)||!archive.size||!/\\.zip$/i.test(archive.name)){
+  if(!(archive instanceof File)||!archive.size||!/\.zip$/i.test(archive.name)){
     notify('Selecione um arquivo .zip válido.','error');return;
   }
   state.zipBusy=true;state.zipReport=null;state.zipProgress='Verificando o pacote…';render();
