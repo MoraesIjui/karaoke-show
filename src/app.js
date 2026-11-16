@@ -567,7 +567,7 @@ async function handleCloudUpload(form) {
   finally { state.cloudBusy = false; render(); }
 }
 async function boot() {
-  const recovery = consumePasswordRecoveryRedirect();
+  const recovery = await consumePasswordRecoveryRedirect();
   if (recovery) {
     state.page = 'cloud';
     state.cloudRecoveryMode = recovery.status === 'ready' ? 'ready' : 'request';
