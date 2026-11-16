@@ -45,3 +45,22 @@
 .midi4you-link{width:100%;text-align:center;text-decoration:none;font-size:12px;min-height:41px;display:flex;align-items:center;justify-content:center}
 @media(max-width:1000px){.midi4you-grid{grid-template-columns:1fr}}
 @media(max-width:500px){.midi4you-intro{padding:16px}.midi4you-symbol{width:42px;height:42px}.midi4you-description h3{font-size:15px}}
+
+
+/* Importação ZIP local: acompanhamento e relatório acessíveis na TV e no celular. */
+.zip-import-panel{margin:22px 0;padding:24px;border:1px solid rgba(152,96,255,.25)}
+.zip-import-panel .import-form{max-width:700px}
+.zip-import-panel input[type=file]{max-width:100%}
+.zip-import-panel #zip-status{min-height:22px;line-height:1.6}
+.zip-report{margin:20px 0;padding:24px}
+.zip-report h2{margin-bottom:9px}
+.zip-report-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}
+.zip-report-metric{min-height:83px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;padding:12px;text-align:center;background:var(--surface-2);border:1px solid var(--border);border-radius:12px}
+.zip-report-metric b{font-size:24px;line-height:1;font-variant-numeric:tabular-nums}
+.zip-report-metric span{font-size:11px;color:var(--muted)}
+.zip-report-details{padding:12px 14px;margin:9px 0;border-radius:12px;background:var(--surface-2);border:1px solid var(--border)}
+.zip-report-details summary{cursor:pointer;font-weight:650;font-size:13px;padding:3px 0;list-style-position:inside}
+.zip-report-details ul{padding:10px 6px 3px 26px;max-height:360px;overflow-y:auto;overflow-wrap:anywhere}
+.zip-report-details li{padding:5px 0;font-size:12px;line-height:1.6;color:var(--muted)}
+.zip-report-details li strong{color:var(--ink)}
+@media(max-width:600px){.zip-import-panel,.zip-report{padding:16px}.zip-report-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
