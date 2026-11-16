@@ -111,7 +111,8 @@ async function signedMediaUrl(path,token) {
  const url=r?.signedURL||r?.signedUrl;
  if(typeof url!=='string'||!url)throw Error('Não foi possível autorizar o arquivo privado.');
  if(url.startsWith('http://')||url.startsWith('https://'))return url;
- return CLOUD.url+(url.startsWith('/')?'':'/storage/v1/')+url;
+ if(url.startsWith('/storage/v1/'))return CLOUD.url+url;
+ return CLOUD.url+'/storage/v1/'+url.replace(/^\/+/, '');
 }
 export async function fetchCloudSongs(){
  if(!session())return [];
