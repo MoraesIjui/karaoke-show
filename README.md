@@ -1,6 +1,6 @@
-# Karaoke Show v0.2 — Web, TV Box e catálogo compartilhado
+# Karaoke Show — Web, TV Box, biblioteca familiar privada e importação ZIP
 
-**Status:** site online; APK de teste compilado pelo GitHub Actions. O catálogo remoto usa Supabase Storage e PostgreSQL, com RLS para impedir envios de visitantes. Há quatro músicas originais, sem músicas comerciais de terceiros.
+**Status:** site online; APK de teste compilado pelo GitHub Actions. Biblioteca compartilhada privada no Supabase (RLS e armazenamento não público), acesso somente para membros da família autorizados. Há quatro músicas originais. Arquivos comerciais não são distribuídos pelo projeto.
 
 ## Site e APK
 
@@ -9,13 +9,17 @@
 - Compilação no GitHub Actions em Ubuntu, JDK 17, Gradle 8.9, Android SDK API 35, minSdk 23. **Android TV e microfone USB precisam de testes físicos**; o APK debug não se destina à Play Store.
 - O aplicativo inclui o site em um WebViewAssetLoader servido em origem HTTPS local, permitindo testar mesmo sem internet com as músicas originais. Músicas do catálogo online exigem conexão.
 
-## Catálogo de músicas na web e no APK
+## Biblioteca particular de músicas na web e no APK
 
-1. O app consulta `public.ks_tracks` do Supabase e baixa os áudios de `ks-media`.
-2. O upload fica na tela **Catálogo online** e requer login administrativo do Supabase Auth; habilite o administrador conforme `supabase/ADMIN-SETUP.md`.
-3. São aceitos **MP3, WAV, OGG, M4A e MP4 áudio**, limite de 25 MB. Letras **LRC** e mapa de notas **JSON** opcionais. Sem mapa de notas, a música é executada sem pontuação; sem LRC, exibe modo instrumental livre.
-4. Não envie músicas/arranjos/letras de terceiros sem direitos para disponibilizá-los publicamente.
-5. **MIDI/KAR ainda não estão implementados** e estão planejados para outra versão.
+1. O app consulta `public.ks_tracks` no Supabase somente após o login de um membro autorizado, com links temporários para o bucket privado `ks-media`.
+2. O upload fica na tela **Biblioteca da família**, mediante login administrativo do Supabase Auth; habilite o administrador conforme `supabase/ADMIN-SETUP.md`.
+3. São aceitos **MP3, WAV, OGG, M4A, MP4, MID, MIDI e KAR**, limite de 25 MB no catálogo privado. Letras **LRC** e mapa de notas **JSON** são opcionais; arquivos KAR podem conter letras incorporadas.
+4. Compartilhe no catálogo privado apenas arquivos cujo uso e compartilhamento sejam permitidos. A distribuição de músicas de terceiros continua sujeita a direitos autorais.
+5. Arquivos MIDI/KAR são sintetizados com Web Audio em timbres simples. A pontuação exige notas vocais de referência.
+
+## Importação de ZIP em lote (somente local)
+
+Use **Importar música → Importar um ZIP de músicas em lote** para abrir um arquivo `.zip` com `.kar`, `.mid` ou `.midi`. O aplicativo verifica CRC, detecta duplicatas, identifica títulos/artistas pelo nome do arquivo e lista `.mk1` e `.alb` como não suportados. As músicas ficam no IndexedDB do aparelho, sem upload ao Supabase. Veja [docs/IMPORTACAO-ZIP.md](docs/IMPORTACAO-ZIP.md).
 
 ## Organização
 
