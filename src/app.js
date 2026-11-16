@@ -2,10 +2,12 @@ import { originals, formatDuration, formatPoints, noteName, hzToMidi } from './s
 import { ScoreSession, rankFromScore, expectedWordAt } from './scoring.js';
 import { Microphone } from './pitch.js';
 import { OriginalAudioEngine, UploadedAudioEngine } from './audio.js';
+import { MidiAudioEngine } from './midi-audio.js';
+import { isMidiName, parseMidiFile } from './midi.js';
 import { parseLrc, parseNoteMap, addNotesToLines, fileAudioDuration } from './importer.js';
 import { DEFAULT_SETTINGS, readLocal, persistLocal, listImports, saveImport, removeImport, cleanSinger } from './storage.js';
 import { installRemoteNavigation } from './remote.js';
-import { fetchCloudSongs, cloudUser, loginAdmin, logoutAdmin, verifyAdmin, uploadCloudSong, sendPasswordRecovery, consumePasswordRecoveryRedirect, updatePasswordFromRecovery } from './cloud.js';
+import { fetchCloudSongs, cloudUser, loginFamily, logoutAdmin, verifyAdmin, uploadCloudSong, sendPasswordRecovery, consumePasswordRecoveryRedirect, updatePasswordFromRecovery } from './cloud.js';
 
 const app = document.getElementById('app');
 const data = readLocal();
@@ -150,10 +152,10 @@ function renderSettings() {
 function renderImport() {
   return `<button class="back-link" data-action="navigate" data-page="songs">${svg('back',17)} Voltar à biblioteca</button>
   ${header('Importar música', 'Traga seus próprios arquivos autorizados para o Karaoke Show.')}
-  <div class="import-columns"><section class="panel"><h2>Nova música local</h2><p class="muted">Use um áudio instrumental (MP3, OGG, WAV ou M4A) e uma letra LRC sincronizada. Para pontuação, adicione também o mapa de notas JSON.</p>
+  <div class="import-columns"><section class="panel"><h2>Nova música local</h2><p class="muted">Importe MP3, WAV, OGG, M4A ou arquivos MIDI/KAR. MIDI/KAR sintetizam os instrumentos e podem incluir letras; para os áudios convencionais, envie uma letra LRC.</p>
   <form id="import-form" class="import-form"><label>Título da música<input name="title" class="text-input" maxlength="80" required placeholder="Ex.: Minha canção"/></label><label>Artista<input name="artist" class="text-input" maxlength="80" required placeholder="Ex.: Meu grupo"/></label>
-  <label>Áudio <small>obrigatório</small><input type="file" name="audio" accept="audio/*,.mp3,.ogg,.wav,.m4a" required/></label>
-  <label>Letra sincronizada <small>.lrc obrigatório</small><input type="file" name="lrc" accept=".lrc,text/plain" required/></label>
+  <label>Música <small>obrigatório</small><input type="file" name="audio" accept="audio/*,.mp3,.ogg,.wav,.m4a,.mid,.midi,.kar" required/></label>
+  <label>Letra sincronizada <small>.lrc opcional para MIDI/KAR</small><input type="file" name="lrc" accept=".lrc,text/plain"/></label>
   <label>Mapa de notas <small>.json opcional</small><input type="file" name="notes" accept=".json,application/json"/></label>
   <button type="submit" class="btn btn-primary" ${state.importBusy?'disabled':''}>${svg('upload',19)} ${state.importBusy?'Importando…':'Adicionar à biblioteca'}</button></form></section>
   <aside class="import-notes"><div class="mini-panel"><div class="import-symbol">${svg('music',30)}</div><h3>Como funciona a letra?</h3><p>O arquivo LRC associa cada frase a um instante da música. Exemplo:</p><pre>[00:04.00]A primeira linha da música
@@ -163,29 +165,31 @@ function renderImport() {
 }
 function renderCloud() {
   const user = cloudUser();
-  const status = state.cloudError ? `<p class="small-muted" role="status">${esc(state.cloudError)}</p>` : `<p class="small-muted">${state.cloudSongs.length} músicas disponíveis no site e no APK.</p>`;
+  const status = state.cloudError ? `<p class="small-muted" role="status">${esc(state.cloudError)}</p>` :
+    !user ? '<p class="small-muted">Entre com uma conta autorizada para acessar as músicas privadas.</p>' :
+    `<p class="small-muted">${state.cloudSongs.length} músicas disponíveis para a família, no site e no APK.</p>`;
   const signin = `<form id="cloud-login-form" class="import-form"><label>E-mail autorizado<input type="email" name="email" class="text-input" autocomplete="username" required/></label><label>Senha<input type="password" name="password" class="text-input" autocomplete="current-password" required/></label><button type="submit" class="btn btn-primary" ${state.cloudBusy?'disabled':''}>Entrar</button></form><button type="button" class="btn btn-outline" data-action="cloud-recovery-toggle">Esqueci minha senha</button><p class="small-muted">A senha é da conta de usuário Supabase Auth, não a do painel Supabase.</p>`;
   const recoverRequest = `<p class="muted">Enviaremos um link de recuperação por e-mail. Se sua conta for usada por outro aplicativo neste projeto Supabase, a troca de senha também afetará esse login.</p><form id="cloud-recovery-email-form" class="import-form"><label>E-mail cadastrado<input type="email" name="email" class="text-input" autocomplete="email" required/></label><button type="submit" class="btn btn-primary" ${state.cloudBusy?'disabled':''}>Enviar link de recuperação</button></form><button type="button" class="btn btn-outline" data-action="cloud-recovery-toggle">Voltar ao login</button>`;
   const recoverSent = `<p class="muted" role="status">Se este e-mail estiver cadastrado, você receberá um link para definir uma nova senha. Confira também a pasta Spam. O link deve abrir este site.</p><button class="btn btn-outline" data-action="cloud-recovery-toggle">Voltar ao login</button>`;
   const recoverUpdate = `<p class="muted">Link confirmado. Escolha uma nova senha de 10 a 72 caracteres.</p><form id="cloud-recovery-password-form" class="import-form"><label>Nova senha<input type="password" name="password" class="text-input" autocomplete="new-password" minlength="10" maxlength="72" required/></label><label>Confirme a senha<input type="password" name="confirm" class="text-input" autocomplete="new-password" minlength="10" maxlength="72" required/></label><button type="submit" class="btn btn-primary" ${state.cloudBusy?'disabled':''}>Salvar nova senha</button></form>`;
-  const admin = `<p class="muted">Administrador: ${esc(user?.email)}</p><form id="cloud-upload-form" class="import-form">
+  const admin = `<p class="muted">Administrador da família: ${esc(user?.email)}</p><form id="cloud-upload-form" class="import-form">
   <label>Título<input class="text-input" name="title" maxlength="100" required/></label>
   <label>Artista<input class="text-input" name="artist" maxlength="100" required/></label>
   <label>Gênero<input class="text-input" name="genre" maxlength="60" value="Sertanejo" required/></label>
-  <label>Áudio (até 25 MB)<input name="audio" type="file" accept="audio/*,.mp3,.ogg,.wav,.m4a,.mp4" required/></label>
+  <label>Arquivo (até 25 MB: MP3, WAV, OGG, M4A, MP4, MID ou KAR)<input name="audio" type="file" accept="audio/*,.mp3,.ogg,.wav,.m4a,.mp4,.mid,.midi,.kar" required/></label>
   <label>Letras LRC (opcional)<input name="lrc" type="file" accept=".lrc,text/plain"/></label>
   <label>Mapa de notas JSON (opcional)<input name="notes" type="file" accept=".json,application/json"/></label>
-  <label><input type="checkbox" name="rights" required/> Tenho direitos para distribuir publicamente este áudio e suas letras.</label>
-  <button class="btn btn-primary" type="submit" ${state.cloudBusy?'disabled':''}>${state.cloudBusy?'Enviando…':'Publicar música para site e APK'}</button>
+  <label><input type="checkbox" name="rights" required/> Tenho autorização para usar e compartilhar este arquivo com a família.</label>
+  <button class="btn btn-primary" type="submit" ${state.cloudBusy?'disabled':''}>${state.cloudBusy?'Enviando…':'Salvar na biblioteca privada'}</button>
   </form><button class="btn btn-outline" data-action="cloud-logout">Sair</button>`;
-  return `${header('Catálogo online','Biblioteca compartilhada entre site e Android TV.') }
-  <div class="import-columns"><section class="panel"><h2>${state.cloudAdmin?'Publicar música':'Músicas compartilhadas'}</h2>
-  <p class="muted">O catálogo é público; apenas administradores autorizados podem enviar arquivos.</p>
+  return `${header('Biblioteca da família','Músicas privadas sincronizadas entre site e Android TV.') }
+  <div class="import-columns"><section class="panel"><h2>${state.cloudAdmin?'Publicar música':'Músicas da família'}</h2>
+  <p class="muted">O catálogo é privado: somente contas da família autorizadas podem visualizar e ouvir. O administrador pode enviar arquivos.</p>
   ${status}<button class="btn btn-outline" data-action="cloud-refresh">Atualizar catálogo</button>
-  ${state.cloudRecoveryMode==='ready'?recoverUpdate:state.cloudRecoveryMode==='request'?recoverRequest:state.cloudRecoveryMode==='sent'?recoverSent:state.cloudAdmin?admin:user?`<p class="muted">Conta sem permissão de administrador.</p><button class="btn btn-outline" data-action="cloud-logout">Sair</button>`:signin}
-  </section><aside class="import-notes"><div class="mini-panel"><h3>Mesmo catálogo em todos os aparelhos</h3><p>O site e o APK consultam o mesmo armazenamento. Os arquivos online exigem internet.</p></div>
-  <div class="mini-panel"><h3>Pontuação</h3><p>Uma música com LRC exibe letras; para pontuar é necessário enviar JSON de notas. MIDI/KAR terão suporte em versão posterior.</p></div>
-  <div class="mini-panel"><h3>Direitos autorais</h3><p>Publique apenas arquivos com autorização para reprodução e distribuição. Importações locais não são compartilhadas.</p></div></aside></div>`;
+  ${state.cloudRecoveryMode==='ready'?recoverUpdate:state.cloudRecoveryMode==='request'?recoverRequest:state.cloudRecoveryMode==='sent'?recoverSent:state.cloudAdmin?admin:user?`<p class="muted">Acesso familiar somente para ouvir. Peça ao administrador para enviar novas músicas.</p><button class="btn btn-outline" data-action="cloud-logout">Sair</button>`:signin}
+  </section><aside class="import-notes"><div class="mini-panel"><h3>Biblioteca particular</h3><p>O site e o APK consultam o mesmo armazenamento privado. Entre com sua conta em cada aparelho; os arquivos online exigem internet.</p></div>
+  <div class="mini-panel"><h3>Pontuação</h3><p>MIDI/KAR reproduzem instrumentos e podem incluir letra. A pontuação exige mapa de notas compatível e microfone; sem ele, o modo é livre.</p></div>
+  <div class="mini-panel"><h3>Direitos autorais</h3><p>Use apenas arquivos que você tenha autorização para compartilhar em família. Mesmo em ambiente privado, os direitos musicais continuam válidos.</p></div></aside></div>`;
 }
 function renderPlayer() {
   const song = state.playingSong;
@@ -277,7 +281,7 @@ async function startShow() {
   state.singerOnStage = data.singer;
   const canScore = mic.connected && scoreable(song);
   state.session = canScore ? new ScoreSession(song, data.settings) : null;
-  state.engine = song.source === 'original' ? new OriginalAudioEngine() : new UploadedAudioEngine();
+  state.engine = song.source === 'original' ? new OriginalAudioEngine() : song.midi ? new MidiAudioEngine() : new UploadedAudioEngine();
   state.playingSong = song;
   state.isPaused = false; state.result = null; state.lastSampleTime = -Infinity;
   state.lastVisualTime = -Infinity; state.lastLyricKey = '';
@@ -407,15 +411,21 @@ async function handleImport(form) {
   if (state.importBusy) return;
   const fields = new FormData(form);
   const audio = fields.get('audio'), lrc = fields.get('lrc'), notesFile = fields.get('notes');
-  if (!(audio instanceof File) || !audio.size || !(lrc instanceof File) || !lrc.size) { notify('Selecione o áudio e o arquivo .lrc.', 'error'); return; }
+  const isMidi = audio instanceof File && isMidiName(audio.name);
+  if (!(audio instanceof File) || !audio.size || (!isMidi && (!(lrc instanceof File) || !lrc.size))) {
+    notify('Selecione a música e, para arquivos de áudio, a letra .lrc.', 'error'); return;
+  }
   if (audio.size > 150 * 1024 * 1024) { notify('Áudio acima do limite de 150 MB.', 'error'); return; }
   if (lrc.size > 1024 * 1024 || (notesFile?.size || 0) > 1024 * 1024) { notify('LRC ou JSON acima do limite de 1 MB.', 'error'); return; }
   state.importBusy = true; render();
   try {
-    const duration = await fileAudioDuration(audio);
-    if (duration > 1800) throw new Error('Áudio acima do limite de 30 minutos.');
-    const lines = parseLrc(await lrc.text(), duration);
-    if (!lines.length) throw new Error('O arquivo LRC não contém linhas com tempo.');
+    const midiData = isMidi ? await parseMidiFile(audio) : null;
+    const duration = midiData?.duration || await fileAudioDuration(audio);
+    if (duration > 1800) throw new Error('Música acima do limite de 30 minutos.');
+    const lines = lrc instanceof File && lrc.size
+      ? parseLrc(await lrc.text(),duration)
+      : (midiData?.lines || []);
+    if (!lines.length && !isMidi) throw new Error('O arquivo LRC não contém linhas com tempo.');
     let fullLines = lines;
     if (notesFile instanceof File && notesFile.size) {
       const map = parseNoteMap(JSON.parse(await notesFile.text()), duration);
@@ -425,9 +435,9 @@ async function handleImport(form) {
       id: `import-${makeId()}`, source: 'import',
       title: String(fields.get('title')).trim().slice(0,80),
       artist: String(fields.get('artist')).trim().slice(0,80),
-      genre: 'Minhas músicas', mood: 'Faixa local', bpm: null, root: 48,
+      genre: 'Minhas músicas', mood: 'Faixa local', bpm: midiData?.bpm || null, root: 48,
       accent: '#26bfcb', glow: '#7962ff', icon: '♪', duration,
-      lines: fullLines, audioBlob: audio
+      lines: fullLines, audioBlob: audio, midi: isMidi
     };
     if (!song.title || !song.artist) throw new Error('Informe o título e o artista.');
     await saveImport(song);
@@ -442,7 +452,7 @@ async function handleAction(action, el) {
     case 'navigate': setPage(el.dataset.page); break;
     case 'cloud-refresh': await refreshCloud(true); break;
     case 'cloud-recovery-toggle': state.cloudRecoveryMode = state.cloudRecoveryMode ? '' : 'request'; state.cloudError=''; render(); break;
-    case 'cloud-logout': logoutAdmin(); state.cloudAdmin = false; render(); break;
+    case 'cloud-logout': logoutAdmin(); state.cloudAdmin = false; state.cloudSongs=[]; state.cloudError=''; render(); break;
     case 'select-song': goSong(el.dataset.id); break;
     case 'filter': state.filter = el.dataset.filter; render(); break;
     case 'toggle-mic': await connectMic(); break;
@@ -524,7 +534,7 @@ async function refreshCloud(feedback = false) {
 async function handleCloudLogin(form) {
   if (state.cloudBusy) return;
   const values = new FormData(form); state.cloudBusy = true;
-  try { await loginAdmin(String(values.get('email')),String(values.get('password'))); state.cloudAdmin = true; notify('Administrador autenticado.'); }
+  try { const member=await loginFamily(String(values.get('email')),String(values.get('password'))); state.cloudAdmin = member.admin; await refreshCloud(); notify(member.admin ? 'Administrador autenticado.' : 'Acesso familiar autorizado.'); }
   catch (err) { state.cloudAdmin = false; notify(err.message,'error'); }
   finally { state.cloudBusy = false; render(); }
 }
@@ -562,7 +572,7 @@ async function handleCloudUpload(form) {
   try {
     await uploadCloudSong({title:f.get('title'),artist:f.get('artist'),genre:f.get('genre'),
       audio:f.get('audio'),lrc:f.get('lrc'),notes:f.get('notes'),rights:f.get('rights') === 'on'});
-    await refreshCloud(); notify('Música publicada para site e APK.');
+    await refreshCloud(); notify('Música salva no catálogo familiar.');
   } catch (err) { notify('Falha ao publicar: '+err.message,'error'); }
   finally { state.cloudBusy = false; render(); }
 }
@@ -576,8 +586,8 @@ async function boot() {
   try { state.imported = await listImports(); }
   catch (err) { notify(`Armazenamento de músicas indisponível: ${err.message}`, 'error'); }
   render();
+  if (cloudUser()) { try { state.cloudAdmin = await verifyAdmin(); } catch {} }
   await refreshCloud();
-  if (cloudUser()) { try { state.cloudAdmin = await verifyAdmin(); render(); } catch {} }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
