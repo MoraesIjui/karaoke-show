@@ -6,6 +6,7 @@ import { MidiAudioEngine } from './midi-audio.js';
 import { SampledMidiAudioEngine } from './soundfont-audio.js';
 import { isMidiName, parseMidiFile } from './midi.js';
 import { importKaraokeZip } from './zip-batch.js';
+import { importUltraStarZip, installOpenTestSong, OPEN_TEST_SONGS } from './ultrastar-import.js';
 import { midi4youSuggestions, midi4youGenres, midi4youSongUrl, filterMidi4YouSongs } from './midi4you-catalog.js';
 import { parseLrc, parseNoteMap, addNotesToLines, fileAudioDuration } from './importer.js';
 import { DEFAULT_SETTINGS, readLocal, persistLocal, listImports, saveImport, removeImport, cleanSinger } from './storage.js';
@@ -21,7 +22,7 @@ const state = {
   activeQueueId: null, singerOnStage: '', isPaused: false, result: null,
   raf: null, lastSampleTime: -Infinity, lastVisualTime: -Infinity,
   lastLyricKey: '', overlay: '', toastTimer: null, installing: null,
-  importBusy: false, cloudSongs: [], cloudError: '', cloudBusy: false, cloudAdmin: false, cloudRecoveryMode: '', midi4youSearch: '', midi4youGenre: 'Todas', zipBusy: false, zipReport: null, zipProgress: ''
+  importBusy: false, cloudSongs: [], cloudError: '', cloudBusy: false, cloudAdmin: false, cloudRecoveryMode: '', midi4youSearch: '', midi4youGenre: 'Todas', zipBusy: false, zipReport: null, zipProgress: '', ultraBusy: false, ultraReport: null, ultraProgress: '', demoBusy: false
 };
 
 const ICONS = {
@@ -260,6 +261,41 @@ function renderZipReport() {
   return html+'</section>';
 }
 
+
+function renderUltraStarImportSection() {
+  const r=state.ultraReport;
+  let report='';
+  if(r){
+    report='<section class="panel usdx-report"><h3>Resultado do pacote UltraStar</h3>'+
+      '<p><b>'+r.imported+'</b> adicionadas · <b>'+r.duplicates+'</b> duplicadas · <b>'+r.failed+'</b> falhas.</p>';
+    const types=['imported','duplicate','failed'];
+    for(const status of types){
+      const items=r.items.filter(x=>x.status===status);
+      if(items.length) report+='<details><summary>'+({imported:'Importadas',duplicate:'Duplicadas',failed:'Falhas'}[status])+' ('+items.length+')</summary><ul>'+
+        items.map(x=>'<li>'+esc(x.name)+' — '+esc(x.reason)+'</li>').join('')+'</ul></details>';
+    }
+    report+='</section>';
+  }
+  const demos=OPEN_TEST_SONGS.map(item=>'<div class="usdx-demo">'+
+    '<div><strong>'+esc(item.title)+'</strong><p>'+esc(item.artist)+' · '+esc(item.license)+' · aproximadamente '+item.sizeMb+' MB</p>'+
+    '<small>Créditos: '+esc(item.credit)+'</small></div>'+
+    '<a target="_blank" rel="noopener noreferrer" href="'+item.licenseUrl+'">Licença</a>'+
+    '<button type="button" class="btn btn-outline" data-action="install-ultrastar-demo" data-demo="'+esc(item.id)+'" '+(state.demoBusy?'disabled':'')+'>Instalar teste</button></div>').join('');
+  return '<section class="panel usdx-import-panel">'+
+    '<h2>UltraStar — músicas com áudio e notas para pontuar</h2>'+
+    '<p class="muted">Importe pacotes ZIP UltraStar contendo <code>song.txt</code> e o respectivo áudio MP3/OGG na mesma pasta. O programa lê sílabas, tempos, notas vocais e, quando existir, o arquivo <code>license.txt</code>. Limite: 100 MB por ZIP, 25 MB por faixa.</p>'+
+    '<form id="ultrastar-zip-form" class="import-form"><label>Pacote UltraStar (.zip)'+
+    '<input type="file" name="archive" accept=".zip,application/zip,application/x-zip-compressed" required/></label>'+
+    '<button type="submit" class="btn btn-primary" '+(state.ultraBusy?'disabled':'')+'>Importar pacote UltraStar</button></form>'+
+    '<p class="small-muted" role="status" id="ultra-status">'+esc(state.ultraProgress || 'A importação é local e não envia músicas ao Supabase.')+'</p>'+
+    '<div class="usdx-demos"><h3>Instalar repertório de teste — Creative Commons</h3>'+
+    '<p class="small-muted">As gravações vêm do repositório oficial UltraStar-Deluxe/songs, mediante seu clique. Uso pessoal e não comercial, com créditos preservados. Algumas faixas incluem a voz original — não são necessariamente instrumentais.</p>'+
+    demos+
+    '<button type="button" class="btn btn-primary" data-action="install-ultrastar-demos" '+(state.demoBusy?'disabled':'')+'>Instalar as 2 músicas de teste</button>'+
+    '<p class="small-muted">Conexão com a internet necessária somente para baixar as faixas; depois ficam salvas neste aparelho, sujeito ao espaço local disponível.</p></div></section>'+
+    report;
+}
+
 function renderImport() {
   return `<button class="back-link" data-action="navigate" data-page="songs">${svg('back',17)} Voltar à biblioteca</button>
   ${header('Importar música', 'Traga seus próprios arquivos autorizados para o Karaoke Show.')}
@@ -273,6 +309,7 @@ function renderImport() {
 [00:08.00]E aqui começa a segunda</pre></div>
   <div class="mini-panel"><h3>E a pontuação?</h3><p>O arquivo JSON opcional fornece o tom esperado em MIDI para cada trecho. Sem ele, a apresentação não entra no ranking.</p><pre>[\n  {"start":4,"end":5,"midi":60},\n  {"start":5,"end":6,"midi":62}\n]</pre><p class="small-muted">Use somente músicas e letras que você tenha direito de reproduzir. Importações ficam armazenadas localmente no navegador.</p></div></aside></div>
 
+  ${renderUltraStarImportSection()}
   <section class="panel zip-import-panel">
     <h2>Importar um ZIP de músicas em lote</h2>
     <p class="muted">Selecione um pacote .zip com arquivos .kar, .mid ou .midi (até 100 MB). O aplicativo reconhece artistas e títulos pelos nomes dos arquivos, verifica integridade, não repete músicas já importadas e mostra quais .mk1 e .alb não consegue abrir.</p>
@@ -544,6 +581,61 @@ async function togglePause() {
   } catch (err) { notify(`Não foi possível ${state.isPaused?'retomar':'pausar'}: ${err.message}`, 'error'); }
 }
 
+
+async function handleUltraStarZip(form){
+  if(state.ultraBusy||state.demoBusy)return;
+  const file=new FormData(form).get('archive');
+  if(!(file instanceof File)||!file.size||!/\.zip$/i.test(file.name)){
+    notify('Selecione um ZIP UltraStar válido.','error');return;
+  }
+  state.ultraBusy=true;state.ultraReport=null;state.ultraProgress='Lendo as faixas UltraStar…';render();
+  try{
+    state.ultraReport=await importUltraStarZip(file,{
+      existingSongs:state.imported,save:saveImport,
+      onProgress:p=>{
+        state.ultraProgress='Pacotes: '+p.processed+' de '+p.candidates+' · '+p.imported+' adicionadas · '+p.failed+' falhas';
+        const el=document.getElementById('ultra-status');if(el)el.textContent=state.ultraProgress;
+      }
+    });
+    state.imported=await listImports();
+    const r=state.ultraReport;
+    state.ultraProgress='Concluído: '+r.imported+' músicas UltraStar adicionadas, '+r.duplicates+' repetidas e '+r.failed+' falhas.';
+    notify(state.ultraProgress,r.failed?'error':'');
+  }catch(error){
+    state.ultraProgress='Falha no ZIP UltraStar: '+(error?.message||error);
+    notify(state.ultraProgress,'error');
+    try{state.imported=await listImports();}catch{}
+  }finally{state.ultraBusy=false;render();}
+}
+async function handleDemoInstall(ids){
+  if(state.demoBusy||state.ultraBusy)return;
+  state.demoBusy=true;state.ultraProgress='Preparando músicas com licença Creative Commons…';render();
+  let added=0,duplicates=0,failed=0;
+  try{
+    for(const id of ids){
+      try{
+        const result=await installOpenTestSong(id,{
+          existingSongs:state.imported,save:saveImport,
+          onProgress:message=>{
+            state.ultraProgress=message;
+            const el=document.getElementById('ultra-status');if(el)el.textContent=message;
+          }
+        });
+        if(result.status==='imported'){
+          added++;
+          state.imported=await listImports();
+        }else duplicates++;
+      }catch(error){
+        failed++;notify('Não foi possível baixar a demonstração: '+(error?.message||error),'error');
+      }
+    }
+    state.ultraProgress='Demonstrações: '+added+' instaladas · '+duplicates+' já presentes · '+failed+' falhas.';
+    if(!failed)notify(state.ultraProgress);
+  }finally{
+    state.demoBusy=false;render();
+  }
+}
+
 async function handleZipImport(form) {
   if(state.zipBusy)return;
   const archive=new FormData(form).get('archive');
@@ -616,6 +708,8 @@ async function handleAction(action, el) {
   switch (action) {
     case 'navigate': setPage(el.dataset.page); break;
     case 'cloud-refresh': await refreshCloud(true); break;
+    case 'install-ultrastar-demo': await handleDemoInstall([el.dataset.demo]); break;
+    case 'install-ultrastar-demos': await handleDemoInstall(OPEN_TEST_SONGS.map(x=>x.id)); break;
     case 'midi4you-filter': state.midi4youGenre=el.dataset.genre || 'Todas'; render(); break;
     case 'cloud-recovery-toggle': state.cloudRecoveryMode = state.cloudRecoveryMode ? '' : 'request'; state.cloudError=''; render(); break;
     case 'cloud-logout': logoutAdmin(); state.cloudAdmin = false; state.cloudSongs=[]; state.cloudError=''; render(); break;
@@ -661,6 +755,7 @@ app.addEventListener('click', event => {
 app.addEventListener('submit', event => {
   if (event.target.id === 'import-form') { event.preventDefault(); handleImport(event.target); }
   if (event.target.id === 'zip-import-form') { event.preventDefault(); handleZipImport(event.target); }
+  if (event.target.id === 'ultrastar-zip-form') { event.preventDefault(); handleUltraStarZip(event.target); }
   if (event.target.id === 'cloud-login-form') { event.preventDefault(); handleCloudLogin(event.target); }
   if (event.target.id === 'cloud-recovery-email-form') { event.preventDefault(); handleRecoveryEmail(event.target); }
   if (event.target.id === 'cloud-recovery-password-form') { event.preventDefault(); handleRecoveryPassword(event.target); }
