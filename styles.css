@@ -78,3 +78,27 @@
 .family-remote-url{word-break:break-all;overflow-wrap:anywhere;background:#211b36;padding:14px;border:1px solid #54456c;border-radius:10px;font-weight:600;color:#e3cdff;font-size:clamp(12px,1.6vw,18px)}
 .family-remote-panel .small-muted{line-height:1.6;margin-top:9px}
 @media(max-width:560px){.family-remote-panel{padding:15px}.family-remote-pair{justify-content:center}.family-remote-link{width:100%}}
+
+
+/* UltraStar: importador e demonstrações CC com atribuição legível na TV Box. */
+.usdx-import-panel{padding:24px;margin:22px 0;border-color:rgba(250,126,159,.35)}
+.usdx-import-panel h2{font-size:21px;margin-bottom:12px}
+.usdx-import-panel p{line-height:1.6}
+.usdx-import-panel code{color:#e6b8fd;font-size:12px}
+.usdx-import-panel .import-form{max-width:750px}
+.usdx-import-panel input[type=file]{max-width:100%}
+.usdx-demos{margin-top:20px;padding:18px;background:var(--surface-2);border:1px solid var(--border);border-radius:13px}
+.usdx-demos h3{font-size:18px;margin-bottom:10px}
+.usdx-demo{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--border);padding:13px 0}
+.usdx-demo>div{flex:1;min-width:200px}
+.usdx-demo strong{font-size:15px;display:block}
+.usdx-demo p{font-size:12px;color:var(--muted);margin:5px 0}
+.usdx-demo small{font-size:11px;color:var(--muted)}
+.usdx-demo a{font-size:12px;color:#d5bbff;text-decoration:underline}
+.usdx-demo button{font-size:12px}
+.usdx-demos>.btn{margin-top:16px}
+.usdx-report{margin:18px 0;padding:18px}
+.usdx-report details{border-top:1px solid var(--border);margin:12px 0;padding-top:9px}
+.usdx-report summary{cursor:pointer;font-weight:600}
+.usdx-report ul{max-height:350px;overflow-y:auto;font-size:12px;overflow-wrap:anywhere}
+@media(max-width:560px){.usdx-import-panel{padding:16px}.usdx-demos{padding:12px}.usdx-demo button{width:100%}}
