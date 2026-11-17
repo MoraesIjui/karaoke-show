@@ -13,6 +13,7 @@ on:
       - "tools/**"
       - "tests/**"
       - "package.json"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
 permissions:
   contents: read
@@ -37,5 +38,9 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
+      # O upload pode ficar visível no artefato antes da indexação da API do GitHub Pages.
+      # Dar um pequeno intervalo evita falsos 404 "No artifacts named github-pages".
+      - name: Aguardar indexação do artefato Pages
+        run: sleep 20
       - id: deployment
         uses: actions/deploy-pages@v4
