@@ -45,7 +45,7 @@ test('UltraStar converte BPM/GAP e preserva notas para pontuação',()=>{
   assert.equal(song.lines[0].words[2].golden,true);
   assert.ok(Math.abs(song.lines[0].start-.675)<.00001);
   assert.ok(Math.abs(song.lines[0].words[1].start-(.675+8*60/(320*4)))<.00001);
-  assert.equal(song.lines[0].text,'Olá mundo !');
+  assert.equal(song.lines[0].text,'Olá mundo!');
   assert.equal(song.lines[1].words[0].midi,undefined);
 });
 test('UltraStar suporta vírgula em BPM e #AUDIO',()=>{
@@ -55,7 +55,7 @@ test('UltraStar suporta vírgula em BPM e #AUDIO',()=>{
 test('UltraStar recusa caminho externo, dueto e RELATIVE',()=>{
   assert.throws(()=>safeUltraStarAudioName('../../segredo.mp3'),/pastas externas/);
   assert.throws(()=>parseUltraStar(sample.replace('audio.ogg','../secret.ogg')),/pastas externas/);
-  assert.throws(()=>parseUltraStar(sample.replace('E','P2\n: 80 2 1  outra\nE')),/dueto/);
+  assert.throws(()=>parseUltraStar(sample.replace(/\nE$/,'\nP2\n: 80 2 1  outra\nE')),/dueto/);
   assert.throws(()=>parseUltraStar(sample.replace('#GAP:675','#GAP:675\n#RELATIVE:yes')),/RELATIVE/);
 });
 test('UltraStar importa ZIP com áudio+licença e impede repetidos',async()=>{
