@@ -1,8 +1,8 @@
 {
   "name": "karaoke-show",
   "private": true,
-  "version": "0.2.0",
-  "description": "Karaokê offline-first para Web, TVs e futura versão Android TV",
+  "version": "0.3.0",
+  "description": "Karaokê familiar para Web e Android TV, com repertório automático licenciado e MIDI/KAR/UltraStar",
   "type": "module",
   "scripts": {
     "dev": "node tools/server.mjs",
@@ -12,5 +12,7 @@
     "build": "node tools/build.mjs"
   },
   "license": "MIT",
-  "engines": {"node": ">=18"}
+  "engines": {
+    "node": ">=18"
+  }
 }
