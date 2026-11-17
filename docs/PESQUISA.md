@@ -1,5 +1,8 @@
 # Karaoke Show — Pesquisa técnica e decisões do produto
 
+> Pesquisa complementar de repositórios GitHub (17/11/2026): [**REFERENCIAS-GITHUB-KARAOKE.md**](REFERENCIAS-GITHUB-KARAOKE.md). Contém os repositórios verificados, licenças informadas pelo GitHub, ideias aplicáveis e prioridades para o produto familiar.
+
+
 **Data de referência:** 15 de novembro de 2026. Esta pesquisa reúne requisitos para um karaokê doméstico, pontuação por voz e a futura instalação em Android TV/TV Box. As fontes oficiais citadas podem sofrer atualização.
 
 ## 1. Benchmark funcional
