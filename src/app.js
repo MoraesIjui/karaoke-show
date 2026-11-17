@@ -3,6 +3,7 @@ import { ScoreSession, rankFromScore, expectedWordAt } from './scoring.js';
 import { Microphone } from './pitch.js';
 import { OriginalAudioEngine, UploadedAudioEngine } from './audio.js';
 import { MidiAudioEngine } from './midi-audio.js';
+import { SampledMidiAudioEngine } from './soundfont-audio.js';
 import { isMidiName, parseMidiFile } from './midi.js';
 import { importKaraokeZip } from './zip-batch.js';
 import { midi4youSuggestions, midi4youGenres, midi4youSongUrl, filterMidi4YouSongs } from './midi4you-catalog.js';
@@ -180,6 +181,11 @@ function renderSettings() {
   return `${header('Configurações', 'Ajuste o palco para o seu microfone, caixa de som e TV.')}
     <div class="settings-grid"><section class="panel"><div class="panel-heading">${svg('volume',23)} <div><h2>Som e acompanhamento</h2><p>Controle o áudio que sai nas caixas de som.</p></div></div>
     <div class="setting-row"><div><strong>Volume da música</strong><p>Afeta somente o acompanhamento, não o microfone.</p></div><label class="range-field"><input type="range" min="0" max="100" step="1" data-setting="volume" value="${Math.round(s.volume*100)}"/><output id="volume-label">${Math.round(s.volume*100)}%</output></label></div>
+    <div class="setting-row"><div><strong>Motor de instrumentos MIDI</strong><p>SoundFont (FluidR3) usa instrumentos gravados, baixados na primeira utilização. Em TV Box com pouca memória, use o sintetizador leve.</p></div><label class="range-field"><select data-setting="midiEngine" aria-label="Motor de áudio MIDI">
+    <option value="light" ${s.midiEngine!=='soundfont'?'selected':''}>Sintetizador leve (offline)</option>
+    <option value="soundfont" ${s.midiEngine==='soundfont'?'selected':''}>SoundFont real (experimental)</option>
+    </select></label></div>
+    <p class="small-muted">O banco FluidR3 tem licença própria (MIT). O SoundFont exige acesso à internet para obter os presets e usa cache local; se falhar, o karaokê volta ao sintetizador leve automaticamente. A pontuação e suas músicas não são enviadas ao serviço de instrumentos.</p>
     <div class="setting-row"><div><strong>Qualidade dos instrumentos MIDI</strong><p>Econômico para TV Boxes antigas; equilibrado ou rico para som com mais harmônicos.</p></div><label class="range-field"><select data-setting="midiQuality" aria-label="Qualidade do som MIDI">
     <option value="economico" ${s.midiQuality==='economico'?'selected':''}>Econômico</option>
     <option value="equilibrado" ${s.midiQuality!=='economico' && s.midiQuality!=='rico'?'selected':''}>Equilibrado</option>
@@ -401,14 +407,23 @@ async function startShow() {
   state.singerOnStage = data.singer;
   const canScore = mic.connected && scoreable(song);
   state.session = canScore ? new ScoreSession(song, data.settings) : null;
-  state.engine = song.source === 'original' ? new OriginalAudioEngine() : song.midi ? new MidiAudioEngine() : new UploadedAudioEngine();
+  state.engine = song.source === 'original' ? new OriginalAudioEngine() : song.midi ? (data.settings.midiEngine === 'soundfont' ? new SampledMidiAudioEngine() : new MidiAudioEngine()) : new UploadedAudioEngine();
   state.playingSong = song;
   state.isPaused = false; state.result = null; state.lastSampleTime = -Infinity;
   state.lastVisualTime = -Infinity; state.lastLyricKey = '';
   try {
     // Reprodução somente após clique explícito. Importações iniciam sem contagem para respeitar autoplay.
-    await state.engine.start(song, { volume: data.settings.volume, guide: data.settings.guide, countdown: song.source === 'original' ? 3 : 0,
-      quality: data.settings.midiQuality, reverb: data.settings.midiReverb ? .12 : 0, drums: data.settings.midiDrums });
+    const audioOptions={ volume: data.settings.volume, guide: data.settings.guide, countdown: song.source === 'original' ? 3 : 0,
+      quality: data.settings.midiQuality, reverb: data.settings.midiReverb ? .12 : 0, drums: data.settings.midiDrums };
+    try {
+      await state.engine.start(song, audioOptions);
+    } catch (soundfontError) {
+      if (!(state.engine instanceof SampledMidiAudioEngine)) throw soundfontError;
+      state.engine.stop();
+      state.engine=new MidiAudioEngine();
+      await state.engine.start(song,audioOptions);
+      notify('SoundFont indisponível: '+soundfontError.message+'. Sintetizador leve ativado.','error');
+    }
   } catch (err) {
     state.engine?.stop(); state.engine = null; state.session = null;
     notify(`Não foi possível iniciar o áudio: ${err.message}`, 'error'); return;
@@ -660,6 +675,7 @@ app.addEventListener('input', event => {
   const key = target.dataset.setting;
   if (['guide','octaveFlexible','reducedMotion','midiReverb','midiDrums'].includes(key)) data.settings[key] = target.checked;
   else if (key === 'midiQuality') data.settings[key] = ['economico','equilibrado','rico'].includes(target.value) ? target.value : 'equilibrado';
+  else if (key === 'midiEngine') data.settings[key] = target.value === 'soundfont' ? 'soundfont' : 'light';
   else if (key === 'volume') data.settings[key] = Number(target.value)/100;
   else if (key === 'sensitivity') data.settings[key] = Number(target.value)/1000;
   else if (key === 'latencyMs') data.settings[key] = Number(target.value);
