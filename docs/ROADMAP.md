@@ -2,6 +2,17 @@
 
 > **Contexto consolidado em 17/11/2026:** referências de [11 repositórios de karaokê no GitHub](REFERENCIAS-GITHUB-KARAOKE.md) foram adicionadas ao planejamento. A lista abaixo é histórica e não reflete integralmente os recursos já entregues. O projeto passou a ter finalidade **pessoal/familiar**, sem distribuição comercial planejada.
 
+## Recursos implementados a partir da pesquisa (17/11/2026)
+
+- [x] Novo parser de letras KAR com tempos de palavras/sílabas (`src/kar-lyrics.js`)
+- [x] Timbragem MIDI leve inspirada em famílias General MIDI; modos econômico/equilibrado/rico, bateria e ambiência (`src/gm-timbres.js`)
+- [x] Servidor local no APK Android para controle da fila pelo celular, com QR e chave por sessão (teste físico pendente)
+- [ ] SoundFont amostrado com licença revisada e consumo de RAM validado em TV Box
+- [ ] Teste físico de microfone, QR, áudio e pareamento LAN em Android TV
+- [ ] Modo avançado com ajuste de afinação por sílaba e duetos
+
+Mais detalhes: [INTEGRACAO-COMUNIDADE-2026.md](INTEGRACAO-COMUNIDADE-2026.md).
+
 ## Próximas melhorias derivadas da pesquisa GitHub
 
 - [ ] **P1 — Instrumentos MIDI melhores:** avaliar `WebAudioFonts/midi-audio-player` (MIT), recursos SoundFont, efeitos, sincronização KAR e uso de memória em TV Box
