@@ -49,6 +49,10 @@ test('navegação e telas renderizam sem lançar erros', async () => {
   assert.match(app.innerHTML,/site no GitHub Pages não possui servidor/);
   click('navigate',{page:'settings'});
   assert.match(app.innerHTML,/Qualidade dos instrumentos MIDI/);
+  click('navigate',{page:'repertoire'});
+  assert.match(app.innerHTML,/Central de repertório automático/);
+  assert.match(app.innerHTML,/Instalação automática autorizada/);
+  assert.match(app.innerHTML,/Jamendo ainda não configurado|Catálogo sincronizado/);
   click('navigate',{page:'midi4you'});
   assert.match(app.innerHTML,/Descobrir MIDI/);
   assert.match(app.innerHTML,/60 Segundos/);
