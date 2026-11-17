@@ -8,7 +8,16 @@ import { parseMidi } from './midi.js';
  */
 export const SOUNDFONT_PRESET_ENDPOINT = 'https://webaudiofonts.com/presets/';
 const BANKS = ['FluidR3_GM', 'FluidR3Mono', 'FluidR3'];
-const MAX_CHANNEL_PRESETS = 18;
+export function maxSoundfontPrograms(deviceMemory) {
+  const ram=Number(deviceMemory);
+  if(Number.isFinite(ram)&&ram>0){
+    if(ram<=1)return 8;
+    if(ram<=2)return 12;
+    return 18;
+  }
+  // Android WebView antigo pode não expor navigator.deviceMemory.
+  return 12;
+}
 const FIRST_LOAD_TIMEOUT = 20000;
 const normalizeVolume = v => Math.max(0,Math.min(1,Number(v)||0));
 
@@ -47,7 +56,10 @@ export class SampledMidiAudioEngine {
     } else throw Error('Arquivo MIDI não encontrado.');
     const parsed=parseMidi(content);
     const programs=programsInMidi(parsed,{drums});
-    if(programs.length>MAX_CHANNEL_PRESETS)throw Error('Esta música exige muitos bancos instrumentais para o SoundFont.');
+    const deviceMemory=typeof navigator==='undefined'?undefined:navigator.deviceMemory;
+    const maxPrograms=maxSoundfontPrograms(deviceMemory);
+    if(programs.length>maxPrograms)
+      throw Error('Esta música exige '+programs.length+' bancos de instrumentos; limite seguro: '+maxPrograms+'.');
     const player=new Player({
       volume:normalizeVolume(volume),reverb:Math.max(0,Math.min(.35,reverb)),
       endpoint:SOUNDFONT_PRESET_ENDPOINT,
