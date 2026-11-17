@@ -125,9 +125,15 @@ async function decompressedBytes(input,method,expected,checksum) {
 }
 
 /** Lê somente uma entrada selecionada, após inspecionar seu tamanho e integridade. */
-export async function extractZipEntry(archive,entry) {
+export async function extractZipEntry(archive,entry,{asset=false}={}) {
   const bytes=asBytes(archive);
-  if(entry.kind!=='midi' || entry.reason) throw Error(entry.reason || 'Formato não compatível.');
+  if(entry.reason)throw Error(entry.reason);
+  if(asset){
+    if(!/\.(txt|mp3|ogg|wav|m4a)$/i.test(entry.name) || entry.size>MAX_MIDI_BYTES)
+      throw Error('Arquivo UltraStar ZIP não permitido ou maior que 25 MB.');
+  }else if(entry.kind!=='midi')throw Error('Formato não compatível.');
+  if(asset && /\.txt$/i.test(entry.name) && entry.size>1024*1024)
+    throw Error('Arquivo TXT acima de 1 MB.');
   if(entry.flags&1)throw Error('Arquivo protegido por senha não suportado.');
   const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
   const at=entry.offset;
@@ -145,3 +151,6 @@ export async function extractZipEntry(archive,entry) {
     throw Error('Falha de integridade (CRC32) no arquivo ZIP.');
   return result;
 }
+
+/** Extrai apenas TXT e áudio do mesmo pacote UltraStar, até 25 MB por item. */
+export async function extractZipAsset(archive,entry){return extractZipEntry(archive,entry,{asset:true});}
