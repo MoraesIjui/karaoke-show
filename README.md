@@ -17,6 +17,12 @@
 4. Compartilhe no catálogo privado apenas arquivos cujo uso e compartilhamento sejam permitidos. A distribuição de músicas de terceiros continua sujeita a direitos autorais.
 5. Arquivos MIDI/KAR têm dois motores: síntese leve offline por Web Audio (padrão) ou reprodução com SoundFont FluidR3 amostrado (experimental e sob demanda). A pontuação exige notas vocais de referência.
 
+## Central de repertório automático
+
+No menu **Repertório automático**, escolha país, idioma, ritmos, quantidade de resultados e tipo de fonte. O índice UltraStar Creative Commons é atualizado diariamente por GitHub Actions. O usuário pode instalar karaokês autorizados individualmente ou em pequenos lotes e, se optar, ativar instalação local automática limitada a três músicas por dia e 30 MB por sessão.
+
+**Importante:** fontes Jamendo são apenas referências musicais sem notas/legendas UltraStar, e exigem configurar JAMENDO_CLIENT_ID no GitHub Actions. O índice remoto não é uma promessa de centenas de karaokês brasileiros, não inclui gravações e não substitui o acervo local. Consulte [docs/REPERTORIO-AUTOMATICO.md](docs/REPERTORIO-AUTOMATICO.md).
+
 ## UltraStar: letras, áudio e notas de referência
 
 A importação **UltraStar** recebe um ZIP com `song.txt` e áudio MP3/OGG em cada pasta, converte **BPM/GAP, sílabas e notas** para o formato usado pelo Karaoke Show e permite pontuar quando conectado a microfone compatível. As faixas ficam no próprio dispositivo; `license.txt` é preservado e pode ser consultado na página da música.
