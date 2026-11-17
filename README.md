@@ -21,6 +21,10 @@
 
 Use **Importar música → Importar um ZIP de músicas em lote** para abrir um arquivo `.zip` com `.kar`, `.mid` ou `.midi`. O aplicativo verifica CRC, detecta duplicatas, identifica títulos/artistas pelo nome do arquivo e lista `.mk1` e `.alb` como não suportados. As músicas ficam no IndexedDB do aparelho, sem upload ao Supabase. Veja [docs/IMPORTACAO-ZIP.md](docs/IMPORTACAO-ZIP.md).
 
+## Pesquisa de repositórios GitHub
+
+O estudo comparativo de karaokês abertos (WebAudioFonts, KaraokeNatin, Nightingale, UltraStar Deluxe, Vocaluxe, Performous e outros) foi incorporado em [**docs/REFERENCIAS-GITHUB-KARAOKE.md**](docs/REFERENCIAS-GITHUB-KARAOKE.md). O documento separa ideias de código já implementado, orienta evolução de som MIDI, letras KAR, controle pelo celular e pontuação, e registra cuidados com licenças.
+
 ## Organização
 
 - `src/`: interface, motor de áudio, pontuação, armazenamento local e `cloud.js` (cliente Supabase).
