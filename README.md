@@ -21,6 +21,14 @@
 
 Use **Importar música → Importar um ZIP de músicas em lote** para abrir um arquivo `.zip` com `.kar`, `.mid` ou `.midi`. O aplicativo verifica CRC, detecta duplicatas, identifica títulos/artistas pelo nome do arquivo e lista `.mk1` e `.alb` como não suportados. As músicas ficam no IndexedDB do aparelho, sem upload ao Supabase. Veja [docs/IMPORTACAO-ZIP.md](docs/IMPORTACAO-ZIP.md).
 
+## Recursos inspirados na comunidade (2026)
+
+- **Instrumentos MIDI melhorados:** perfis de timbres GM em `src/gm-timbres.js`, modos Econômico/Equilibrado/Rico, ambiência e chave de bateria MIDI.
+- **Letras KAR detalhadas:** parser `src/kar-lyrics.js` preserva tempos de palavras e sílabas.
+- **Controle familiar pelo celular (APK Android):** nova tela **Controle pelo celular**, QR code e servidor local protegido por token. Celular e TV Box devem estar na mesma rede. Adiciona músicas à fila, sem enviar arquivos ou senhas ao telefone.
+- **Limite:** ainda não temos SoundFont amostrado real, suporte Microke MK1 ou validação do controle LAN em TV Box física.
+- Consulte [docs/INTEGRACAO-COMUNIDADE-2026.md](docs/INTEGRACAO-COMUNIDADE-2026.md) para funcionamento, segurança, atribuição de licença e roteiro de testes.
+
 ## Pesquisa de repositórios GitHub
 
 O estudo comparativo de karaokês abertos (WebAudioFonts, KaraokeNatin, Nightingale, UltraStar Deluxe, Vocaluxe, Performous e outros) foi incorporado em [**docs/REFERENCIAS-GITHUB-KARAOKE.md**](docs/REFERENCIAS-GITHUB-KARAOKE.md). O documento separa ideias de código já implementado, orienta evolução de som MIDI, letras KAR, controle pelo celular e pontuação, e registra cuidados com licenças.
