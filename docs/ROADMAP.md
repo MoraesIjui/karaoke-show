@@ -2,6 +2,19 @@
 
 > **Contexto consolidado em 17/11/2026:** referências de [11 repositórios de karaokê no GitHub](REFERENCIAS-GITHUB-KARAOKE.md) foram adicionadas ao planejamento. A lista abaixo é histórica e não reflete integralmente os recursos já entregues. O projeto passou a ter finalidade **pessoal/familiar**, sem distribuição comercial planejada.
 
+## Central de repertório automático — novembro de 2026
+
+- [x] Índice de metadados UltraStar Creative Commons atualizado diariamente
+- [x] Filtros independentes de país, idioma, ritmo e tipo de conteúdo
+- [x] Instalação de karaokês elegíveis em pequenos lotes, com deduplicação e licença preservada
+- [x] Instalação automática opcional ao abrir, até três faixas/dia e 30 MB/sessão
+- [x] Fonte Jamendo opcional para referências musicais, separada de karaokês completos
+- [ ] Configurar JAMENDO_CLIENT_ID para habilitar a fonte Jamendo
+- [ ] Conectar fontes autorizadas que tenham sertanejo, música gaúcha e pagode completos
+- [ ] Testar download e reprodução em TV Box física, inclusive armazenamento disponível
+
+Documentação: [REPERTORIO-AUTOMATICO.md](REPERTORIO-AUTOMATICO.md).
+
 ## UltraStar e repertório para teste (17/11/2026)
 
 - [x] Parser UltraStar TXT com BPM, GAP, notas de voz e letras por sílaba
