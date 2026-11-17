@@ -6,6 +6,8 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.PermissionRequest;
+import android.webkit.JavascriptInterface;
+import android.net.Uri;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -17,6 +19,7 @@ import androidx.webkit.WebViewAssetLoader;
 import java.util.Arrays;
 public class MainActivity extends Activity {
  private WebView webView;
+ private FamilyRemoteServer familyRemote;
  private PermissionRequest pendingMicrophone;
  private ValueCallback<android.net.Uri[]> pendingFiles;
  private static final int MIC_REQUEST=21,FILE_REQUEST=22;
@@ -39,10 +42,17 @@ public class MainActivity extends Activity {
     return loader.shouldInterceptRequest(request.getUrl());
    }
    @Override public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){
-    return !"appassets.androidplatform.net".equals(request.getUrl().getHost())
-     && !"https".equals(request.getUrl().getScheme());
+    Uri url=request.getUrl();
+    if("appassets.androidplatform.net".equals(url.getHost())
+       && url.getPath()!=null && url.getPath().startsWith("/assets/web/"))return false;
+    try{
+      Intent external=new Intent(Intent.ACTION_VIEW,url);
+      startActivity(external);
+    }catch(Exception ignored){}
+    return true;
    }
   });
+  // A ponte nativa só é segura no domínio local appassets.
   webView.setWebChromeClient(new WebChromeClient(){
    @Override public void onPermissionRequest(PermissionRequest request){
     runOnUiThread(()->{
@@ -66,6 +76,15 @@ public class MainActivity extends Activity {
     return true;
    }
   });
+  try {
+    familyRemote=new FamilyRemoteServer(this,webView);
+    familyRemote.start();
+    final FamilyRemoteServer host=familyRemote;
+    webView.addJavascriptInterface(new Object(){
+      @JavascriptInterface public String getRemoteUrl(){return host.getPairUrl();}
+      @JavascriptInterface public void updateCatalog(String json){host.updateCatalog(json);}
+    },"KaraokeBridge");
+  }catch(Exception ignored){ familyRemote=null; }
   webView.loadUrl("https://appassets.androidplatform.net/assets/web/index.html");
  }
  @Override public void onRequestPermissionsResult(int code,String[] permissions,int[] results){
@@ -90,6 +109,7 @@ public class MainActivity extends Activity {
  @Override protected void onDestroy(){
   if(pendingMicrophone!=null){pendingMicrophone.deny();pendingMicrophone=null;}
   if(pendingFiles!=null){pendingFiles.onReceiveValue(null);pendingFiles=null;}
+  if(familyRemote!=null){familyRemote.stop();familyRemote=null;}
   if(webView!=null)webView.destroy();
   super.onDestroy();
  }
