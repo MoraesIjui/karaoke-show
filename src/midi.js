@@ -1,3 +1,4 @@
+import { parseKarLyricTokens } from './kar-lyrics.js';
 /**
  * Leitor de Standard MIDI File 0/1 e letras KAR (meta 0x05 / 0x01).
  * Sem bibliotecas externas, downloads automáticos ou acesso a catálogos terceiros.
@@ -10,17 +11,6 @@ const readText = (bytes) => {
   catch { return new TextDecoder('windows-1252').decode(bytes); }
 };
 const fourCC = (bytes, pos) => String.fromCharCode(...bytes.slice(pos, pos + 4));
-const lyricLine = (bits, nextStart) => {
-  const full = bits.map(x => x.text).join('').replace(/\s+/g, ' ').trim();
-  if (!full) return null;
-  const start = bits[0].at;
-  const end = Math.max(start + .2, nextStart);
-  const words = full.split(/\s+/);
-  return { start, end, text: full, words: words.map((word, i) => ({
-    text: word, start: start + (end - start) * i / words.length,
-    end: start + (end - start) * (i + 1) / words.length
-  })) };
-};
 
 export function isMidiName(name = '') { return /\.(mid|midi|kar)$/i.test(String(name)); }
 
@@ -139,17 +129,7 @@ export function parseMidi(buffer) {
     midi:n.midi,velocity:n.velocity,channel:n.channel,program:n.program,track:n.track
   })).filter(n=>n.at<1800).sort((a,b)=>a.at-b.at);
   const rawLyrics=lyricCandidates.sort((a,b)=>a.tick-b.tick).map(x=>({at:seconds(x.tick),text:x.text}));
-  const lines=[];let bits=[];
-  for (const token of rawLyrics) {
-    const text=token.text;
-    if (text.startsWith('\\') || text.startsWith('/')) {
-      if (bits.length) {const line=lyricLine(bits,token.at);if(line)lines.push(line);}
-      bits=[];
-      const rest=text.slice(1);
-      if (rest.trim()) bits.push({at:token.at,text:rest});
-    } else bits.push({at:token.at,text});
-  }
-  if (bits.length) {const line=lyricLine(bits,Math.max(seconds(maxTick),bits.at(-1).at+3));if(line)lines.push(line);}
+  const lines=parseKarLyricTokens(rawLyrics,Math.max(1,seconds(maxTick)+1));
   const duration=Math.max(1,Math.min(1800,seconds(maxTick)+1));
   if (duration>1799.99) throw Error('MIDI acima do limite de 30 minutos.');
   if (!events.length) throw Error('O MIDI não contém notas para reproduzir.');
