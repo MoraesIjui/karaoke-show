@@ -22,7 +22,7 @@ const clip=(text,max=100)=>String(text??'').slice(0,max);
 export function safeRepertoirePreferences(prefs){
   const input=prefs&&typeof prefs==='object'?prefs:{};
   return {
-    country:['all','BR','unknown'].includes(input.country)?input.country:'all',
+    country:['all','unknown'].includes(input.country)||/^[A-Z]{2}$/.test(input.country||'')?input.country:'all',
     language:['all','pt','en','es','de','fr','unknown'].includes(input.language)?input.language:'all',
     genres:Array.isArray(input.genres)?[...new Set(input.genres.filter(g=>RHYTHMS.some(x=>x[0]===g)))].slice(0,18):[],
     type:['all','karaoke','reference'].includes(input.type)?input.type:'all',
