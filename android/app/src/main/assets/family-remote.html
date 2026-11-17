@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Controle da festa — Karaoke Show</title>
+<style>
+:root{font-family:system-ui,-apple-system,Arial,sans-serif;color:#f5f3ff;background:#0e0b1b}
+*{box-sizing:border-box}body{margin:0;min-height:100dvh;padding:18px}
+main{max-width:700px;margin:auto}
+header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.note{width:54px;height:54px;border-radius:15px;background:linear-gradient(140deg,#8b5cf6,#ed4a9b);display:grid;place-items:center;font-size:30px}
+h1{font-size:24px;margin:0}h2{font-size:17px;margin:0 0 4px}
+.sub{font-size:12px;color:#b7afce}
+.panel{background:#1b172e;border:1px solid #423958;border-radius:15px;padding:16px;margin-bottom:15px}
+label{display:block;color:#ccc3e3;font-size:13px;margin:0 0 5px}
+input,button{font:inherit}
+input{color:#fff;background:#100f20;border:1px solid #5a4e75;border-radius:10px;padding:13px;width:100%;min-height:46px}
+input:focus-visible,button:focus-visible{outline:3px solid #e4c0ff;outline-offset:3px}
+button{background:#7a4adc;border:none;border-radius:10px;padding:12px 15px;color:white;cursor:pointer;font-weight:700;min-height:44px}
+button:disabled{opacity:.5}
+.search{display:flex;gap:8px}
+.search input{flex:1}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 0;border-bottom:1px solid #3a304f}
+.row:last-child{border:none}
+.row strong{display:block;font-size:14px;margin-bottom:3px}
+.row .artist{font-size:12px;color:#b8aacd}
+.row button{flex:none;font-size:12px;min-width:96px}
+.status{padding:10px 12px;border-radius:8px;background:#272040;min-height:39px;line-height:1.5;font-size:13px;color:#eee3ff}
+.muted{color:#aaa0bc;font-size:12px;line-height:1.6}
+</style></head><body><main>
+<header><div class="note">♫</div><div><h1>Karaoke Show</h1><span class="sub">Controle familiar · mesma rede Wi-Fi da TV</span></div></header>
+<section class="panel"><h2>Seu nome na fila</h2><p class="muted">Escolha quem vai cantar; a TV controla quando começa a apresentação.</p>
+<label for="singer">Nome do cantor</label><input id="singer" maxlength="36" placeholder="Ex.: Família / Convidado" autocomplete="nickname"></section>
+<section class="panel"><h2>Escolher música</h2><p class="muted">Os arquivos permanecem na TV Box. Este controle envia apenas o pedido para adicionar à fila.</p>
+<label for="search">Buscar por música ou artista</label><div class="search"><input id="search" placeholder="Buscar uma música..." type="search">
+<button id="refresh" type="button">Atualizar</button></div>
+<p id="count" class="muted" aria-live="polite"></p><div id="tracks"></div></section>
+<p id="status" class="status" role="status">Conectando à TV…</p>
+<p class="muted">A conexão funciona apenas enquanto o Karaoke Show estiver aberto na TV Box. O endereço de pareamento é privado: não compartilhe com pessoas fora de sua rede familiar.</p>
+</main><script>
+'use strict';
+const params=new URLSearchParams(location.search),key=params.get('key');
+const status=document.getElementById('status'),container=document.getElementById('tracks');
+const search=document.getElementById('search'),singer=document.getElementById('singer');
+const count=document.getElementById('count');
+let songs=[];
+function notice(message){status.textContent=message;}
+function filter(){
+ const value=search.value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
+ const norm=s=>String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
+ const result=songs.filter(s=>norm(s.title+' '+s.artist).includes(value)).slice(0,150);
+ count.textContent=result.length+' músicas exibidas de '+songs.length;
+ container.replaceChildren();
+ if(!result.length){const p=document.createElement('p');p.className='muted';p.textContent='Nenhuma música encontrada. Importe os arquivos na TV e atualize aqui.';container.append(p);return;}
+ for(const item of result){
+  const row=document.createElement('div');row.className='row';
+  const info=document.createElement('div'),title=document.createElement('strong'),artist=document.createElement('div');
+  title.textContent=item.title;artist.className='artist';artist.textContent=item.artist;
+  info.append(title,artist);
+  const btn=document.createElement('button');btn.textContent='Entrar na fila';
+  btn.addEventListener('click',async()=>{
+   btn.disabled=true;
+   try{
+    const response=await fetch('/api/queue?key='+encodeURIComponent(key),{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({songId:item.id,singer:singer.value.trim()||'Convidado'})
+    });
+    if(!response.ok)throw new Error(await response.text());
+    notice('✓ '+item.title+' foi adicionada à fila da TV.');
+   }catch(error){notice('Não foi possível adicionar: '+error.message);}
+   finally{btn.disabled=false;}
+  });
+  row.append(info,btn);container.append(row);
+ }
+}
+async function refresh(){
+ if(!key){notice('Abra o endereço mostrado na TV para parear.');return;}
+ try{
+  const res=await fetch('/api/catalog?key='+encodeURIComponent(key),{cache:'no-store'});
+  if(!res.ok)throw new Error('A conexão foi recusada pela TV.');
+  const data=await res.json();songs=Array.isArray(data.songs)?data.songs:[];
+  filter();notice('Conectado à biblioteca da TV.');
+ }catch(error){notice('Falha de conexão: '+error.message);}
+}
+search.addEventListener('input',filter);
+document.getElementById('refresh').addEventListener('click',refresh);
+refresh();
+</script></body></html>
