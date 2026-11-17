@@ -7,7 +7,8 @@
 - [x] Novo parser de letras KAR com tempos de palavras/sílabas (`src/kar-lyrics.js`)
 - [x] Timbragem MIDI leve inspirada em famílias General MIDI; modos econômico/equilibrado/rico, bateria e ambiência (`src/gm-timbres.js`)
 - [x] Servidor local no APK Android para controle da fila pelo celular, com QR e chave por sessão (teste físico pendente)
-- [ ] SoundFont amostrado com licença revisada e consumo de RAM validado em TV Box
+- [x] Integração experimental com motor SoundFont WebAudioFonts 2.0.3 MIT, presets FluidR3 sob demanda e fallback offline
+- [ ] Medir consumo de RAM, CPU, latência, cache de presets e qualidade do SoundFont em TV Box física
 - [ ] Teste físico de microfone, QR, áudio e pareamento LAN em Android TV
 - [ ] Modo avançado com ajuste de afinação por sílaba e duetos
 
@@ -15,14 +16,14 @@ Mais detalhes: [INTEGRACAO-COMUNIDADE-2026.md](INTEGRACAO-COMUNIDADE-2026.md).
 
 ## Próximas melhorias derivadas da pesquisa GitHub
 
-- [ ] **P1 — Instrumentos MIDI melhores:** avaliar `WebAudioFonts/midi-audio-player` (MIT), recursos SoundFont, efeitos, sincronização KAR e uso de memória em TV Box
+- [x] **P1 — Instrumentos MIDI melhores:** integração experimental `WebAudioFonts/midi-audio-player` (MIT) e presets FluidR3 sob demanda; desempenho e cache ainda pendentes em TV Box
 - [ ] **P1 — Letras KAR:** comparar a leitura de eventos MIDI/KAR com `fraigo/karaoke-player` (MIT), corrigir formatos de quebras e sílabas com testes reais
 - [ ] **P2 — Biblioteca local em TV Box:** estudar importação por pasta/pendrive sem enviar músicas à nuvem; preservar acervo ao atualizar o APK
 - [ ] **P2 — Controle pelo celular:** QR e fila local, inspirados em KaraokeNatin e vkara; sem depender de vídeos YouTube
 - [ ] **P3 — Pontuação avançada:** notas vocais confiáveis e calibração física, tomando Nightingale, UltraStar Deluxe, Vocaluxe e Performous como referências arquiteturais
 - [ ] **Pesquisa MK1:** estudar o formato proprietário Microke com arquivos reais, sem prometer compatibilidade ou conversão automática
 
-**Já entregue em etapas posteriores ao roteiro inicial:** APK debug, leitura KAR/MID, importação em lote ZIP, biblioteca familiar autenticada e seção Descobrir MIDI. A execução física na TV Box, som SoundFont e compatibilidade MK1 seguem pendentes.
+**Já entregue em etapas posteriores ao roteiro inicial:** APK debug, leitura KAR/MID, importação em lote ZIP, biblioteca familiar autenticada e seção Descobrir MIDI. A execução física na TV Box, a validação do SoundFont experimental e a compatibilidade MK1 seguem pendentes.
 
 
 ## Versão 0.1 — First Stage (base atual)
