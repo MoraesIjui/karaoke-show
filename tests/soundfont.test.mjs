@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SampledMidiAudioEngine, programsInMidi, isFluidR3Preset } from '../src/soundfont-audio.js';
+import { SampledMidiAudioEngine, programsInMidi, isFluidR3Preset, maxSoundfontPrograms } from '../src/soundfont-audio.js';
 
 function midiFixture(){
   const data=new Uint8Array([
@@ -74,4 +74,11 @@ test('Sem FluidR3 falha de forma explícita e não baixa presets desconhecidos',
     await assert.rejects(sound.start({audioBlob:{arrayBuffer:async()=>midiFixture()}}),/FluidR3/);
     assert.equal(loaded,false);
   }finally{globalThis.MidiAudioPlayer=old;}
+});
+
+test('TV Box: limites do SoundFont se adaptam à RAM informada',()=>{
+  assert.equal(maxSoundfontPrograms(1),8);
+  assert.equal(maxSoundfontPrograms(2),12);
+  assert.equal(maxSoundfontPrograms(4),18);
+  assert.equal(maxSoundfontPrograms(undefined),12);
 });
