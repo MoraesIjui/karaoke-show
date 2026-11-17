@@ -157,7 +157,7 @@ export async function installOpenTestSong(id,{existingSongs=[],save,onProgress=(
   const parsed=parseUltraStar(textDecoder(txtBytes));
   if(keyOf(parsed)!==keyOf(item))throw Error('A música da origem não corresponde à seleção.');
   const licenseText=textDecoder(licenseBytes);
-  if(!licenseText.includes('creativecommons.org/licenses/by-nc/'))
+  if(!/creativecommons\.org\/licenses\/by-nc(?:-sa)?\/3\.0/i.test(licenseText))
     throw Error('Licença Creative Commons da origem não foi reconhecida.');
   if(item.id==='in-my-hand' && !/by-nc-sa\/3\.0/i.test(licenseText))
     throw Error('Licença da música não corresponde ao catálogo.');
