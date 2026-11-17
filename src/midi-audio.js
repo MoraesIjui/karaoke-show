@@ -1,3 +1,4 @@
+import { gmProfile, sanitizeMidiQuality } from './gm-timbres.js';
 import { midiToHz } from './songs.js';
 import { parseMidi } from './midi.js';
 
@@ -10,8 +11,9 @@ export class MidiAudioEngine {
     this.ctx=null;this.master=null;this.compressor=null;this.events=[];
     this.eventIndex=0;this.startAt=0;this.paused=false;this.timer=null;
     this.voices=new Set();this.noiseBuffer=null;this.active=false;
+    this.quality='equilibrado';this.drums=true;this.roomNodes=[];
   }
-  async start(song, {volume=.7}={}) {
+  async start(song, {volume=.7, quality='equilibrado', drums=true, reverb=.12}={}) {
     this.stop();
     const AC=window.AudioContext||window.webkitAudioContext;
     if (!AC) throw Error('Este aparelho não suporta síntese MIDI com Web Audio.');
@@ -23,6 +25,20 @@ export class MidiAudioEngine {
     this.compressor.ratio.value=5;
     this.master.connect(this.compressor);
     this.compressor.connect(this.ctx.destination);
+    this.quality=sanitizeMidiQuality(quality);
+    this.drums=!!drums;
+    if(this.quality!=='economico' && reverb>0 && typeof this.ctx.createDelay==='function'){
+      // Eco curto e discreto. Os canais podem continuar funcionando sem esse efeito.
+      const delay=this.ctx.createDelay(.4);
+      const feedback=this.ctx.createGain();
+      const wet=this.ctx.createGain();
+      delay.delayTime.value=.16;
+      feedback.gain.value=.12;
+      wet.gain.value=Math.min(.26,Math.max(0,reverb));
+      this.master.connect(delay);delay.connect(feedback);feedback.connect(delay);
+      delay.connect(wet);wet.connect(this.compressor);
+      this.roomNodes=[delay,feedback,wet];
+    }
     try {
       await this.ctx.resume();
       let bytes;
@@ -63,37 +79,35 @@ export class MidiAudioEngine {
     }
   }
   play(event,when) {
-    const ctx=this.ctx;
-    if(!ctx)return;
-    const channel=event.channel;
+    if(!this.ctx)return;
     const midi=event.midi;
     const duration=Math.min(6,Math.max(.035,event.dur));
-    const strength=Math.max(.015,Math.min(.22,event.velocity*.13));
-    if(channel===9){
-      // Canal 10 de General MIDI é percussão.
-      if(midi===35||midi===36) {
-        this.osc(when,.14,110,'sine',strength*2.2,.003,.12,42);
-      } else if(midi===38||midi===40) {
+    const strength=Math.max(.012,Math.min(.18,event.velocity*.13));
+    if(event.channel===9){
+      if(!this.drums)return;
+      // Canal 10 de General MIDI: percussão básica.
+      if(midi===35||midi===36) this.osc(when,.14,110,'sine',strength*2.2,.003,.12,42);
+      else if(midi===38||midi===40){
         this.osc(when,.11,185,'triangle',strength,.002,.09);
         this.noise(when,.14,strength*.9,1400);
-      } else if(midi>=42&&midi<=59) {
-        this.noise(when,.045,strength*.55,5000);
-      } else this.osc(when,.1,220+(midi%12)*30,'triangle',strength*.5,.003,.07);
+      }else if(midi>=42&&midi<=59)this.noise(when,.045,strength*.55,5000);
+      else this.osc(when,.1,220+(midi%12)*30,'triangle',strength*.5,.003,.07);
       return;
     }
-    let wave='triangle', filter=3000,attack=.018,release=.1;
-    const p=event.program;
-    if(p<8){wave='triangle';attack=.007;release=.18;}
-    else if(p<16){wave='triangle';attack=.015;release=.2;}
-    else if(p<24){wave='sine';attack=.035;release=.26;}
-    else if(p<32){wave='triangle';attack=.006;release=.12;filter=1800;}
-    else if(p<40){wave='sine';attack=.008;release=.1;}
-    else if(p<56){wave='sawtooth';attack=.03;release=.17;filter=1400;}
-    else if(p<80){wave='triangle';attack=.025;release=.17;}
-    else if(p<88){wave='square';attack=.012;release=.09;filter=1400;}
-    else if(p<104){wave='sine';attack=.075;release=.28;}
-    else {wave='triangle';attack=.02;release=.15;}
-    this.osc(when,duration,midiToHz(midi),wave,strength,attack,release,null,filter);
+    const p=gmProfile(event.program);
+    const hz=midiToHz(midi);
+    const primaryGain=this.quality==='economico'?strength:strength*.83;
+    this.osc(when,duration,hz,p.wave,primaryGain,p.attack,p.release,null,p.filter);
+    if(this.quality==='economico')return;
+    // Harmônicos leves inspirados em síntese de bancos GM, sem amostras externas.
+    const allowed=this.quality==='rico'||(event.program<32 || (event.program>=48 && event.program<88));
+    if(allowed && this.voices.size<44){
+      const gain=strength*p.harmonic*(this.quality==='rico'?1:.62);
+      const ratio=this.quality==='rico'?p.ratio:2;
+      this.osc(when,Math.min(duration,2.8),hz*ratio,
+        'sine',gain,Math.max(.004,p.attack*.8),p.release,null,
+        Math.max(1200,p.filter*1.5));
+    }
   }
   osc(at,duration,hz,wave,gain,attack,release,sweep,filter) {
     if(!this.ctx)return;
@@ -140,6 +154,8 @@ export class MidiAudioEngine {
     for(const node of this.voices){try{node.stop();}catch{}}
     this.voices.clear();
     if(this.ctx)this.ctx.close().catch(()=>{});
+    for(const node of this.roomNodes){try{node.disconnect();}catch{}}
+    this.roomNodes=[];
     this.ctx=null;this.master=null;this.events=[];this.eventIndex=0;this.paused=false;
   }
 }
