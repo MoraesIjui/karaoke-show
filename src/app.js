@@ -712,6 +712,89 @@ async function handleImport(form) {
   } catch (err) { notify(`Não foi possível importar: ${err.message}`, 'error'); }
   finally { state.importBusy = false; render(); }
 }
+
+const REPERTOIRE_AUTO_DAY_KEY='karaoke-show-repertoire-last-auto-day';
+
+function repertoireProgress(message) {
+  state.repertoireProgress=message;
+  const el=document.getElementById('repertoire-status');
+  if(el)el.textContent=message;
+}
+async function loadRepertoireIndex(announce=false) {
+  if(state.repertoireBusy)return;
+  state.repertoireBusy=true;
+  repertoireProgress('Buscando índice de músicas e licenças…');
+  if(state.page==='repertoire')render();
+  try{
+    state.repertoireIndex=await fetchRepertoireIndex();
+    const count=state.repertoireIndex.items.length;
+    repertoireProgress(count+' referências encontradas. '+state.repertoireIndex.items.filter(x=>x.ready).length+' karaokês elegíveis para instalar.');
+    if(announce)notify('Catálogo atualizado: '+count+' referências.');
+  }catch(error){
+    repertoireProgress('Não foi possível carregar o catálogo: '+error.message);
+    if(announce)notify(state.repertoireProgress,'error');
+  }finally{
+    state.repertoireBusy=false;
+    if(state.page==='repertoire')render();
+  }
+  if(state.repertoirePrefs.autoInstall){
+    await maybeAutoInstall();
+  }
+}
+async function handleRepertoireInstall(ids=null,{automatic=false,limit=5}={}) {
+  if(state.repertoireInstalling||state.repertoireBusy)return;
+  const list=ids
+    ? ids.map(id=>state.repertoireIndex?.items?.find(x=>x.id===id)).filter(Boolean)
+    : downloadableRepertoire(state.repertoireIndex,state.repertoirePrefs,{
+        installed:state.imported,max:limit
+      });
+  if(!list.length){
+    if(!automatic)notify('Não há karaokês autorizados para instalar com estes filtros.');
+    return;
+  }
+  state.repertoireInstalling=true;
+  let saved=0,skipped=0,failed=0,used=0;
+  if(state.page==='repertoire')render();
+  try{
+    for(const item of list){
+      if(automatic && used+(item.audioBytes||0)>30*1024*1024){
+        skipped++;continue;
+      }
+      try{
+        const result=await installRepertoireUltraStar(item,{
+          existingSongs:state.imported,save:saveImport,
+          onProgress:message=>repertoireProgress(message)
+        });
+        if(result.status==='imported'){
+          saved++;used+=result.bytes||item.audioBytes||0;
+          state.imported=await listImports();
+          updateRemoteCatalog();
+        }else skipped++;
+      }catch(error){
+        failed++;
+        repertoireProgress('Não foi possível instalar '+item.title+': '+(error?.message||error));
+      }
+    }
+    const result='Repertório: '+saved+' instaladas, '+skipped+' ignoradas e '+failed+' falhas.';
+    repertoireProgress(result);
+    if(!automatic||saved||failed)notify(result,failed?'error':'');
+  }finally{
+    state.repertoireInstalling=false;
+    if(state.page==='repertoire')render();
+  }
+}
+async function maybeAutoInstall() {
+  if(!state.repertoirePrefs.autoInstall||!state.repertoireIndex?.items?.length||
+     state.repertoireInstalling || !navigator.onLine || navigator.connection?.saveData)return;
+  const today=new Date().toISOString().slice(0,10);
+  try{if(localStorage.getItem(REPERTOIRE_AUTO_DAY_KEY)===today)return;}catch{}
+  const list=downloadableRepertoire(state.repertoireIndex,state.repertoirePrefs,{
+    installed:state.imported,max:3
+  });
+  try{localStorage.setItem(REPERTOIRE_AUTO_DAY_KEY,today);}catch{}
+  if(list.length)await handleRepertoireInstall(list.map(x=>x.id),{automatic:true,limit:3});
+}
+
 async function handleAction(action, el) {
   switch (action) {
     case 'navigate': setPage(el.dataset.page); break;
@@ -894,7 +977,7 @@ async function boot() {
   render();
   if (cloudUser()) { try { state.cloudAdmin = await verifyAdmin(); } catch {} }
   await refreshCloud();
-  await loadRepertoireIndex(false);
+  if(location.protocol!=='file:')await loadRepertoireIndex(false);
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
