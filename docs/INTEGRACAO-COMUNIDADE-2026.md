@@ -15,7 +15,7 @@ Arquivos: `src/midi-audio.js`, `src/gm-timbres.js`, `src/storage.js`, `src/app.j
 - Chave para ativar/desativar percussão MIDI; controle de reverberação leve.
 - Controle em **Configurações → Som e acompanhamento → Qualidade dos instrumentos MIDI**.
 
-**Limite técnico:** não foi integrado um SoundFont real nesta etapa. O `midi-audio-player` da comunidade usa bibliotecas e presets amostrados; amostras maiores demandam memória e licenças próprias. Antes de integrar um banco SoundFont, medir uso em TV Box real e verificar a licença dos samples. A melhoria entregue nesta versão é **síntese GM mais expressiva, totalmente offline**, não reprodução instrumental profissional.
+**Evolução posterior (17/11/2026):** foi integrado um motor SoundFont amostrado experimental baseado no `midi-audio-player` 2.0.3 (MIT), preferindo exclusivamente presets FluidR3 com atribuição. O motor padrão continua sendo a síntese leve offline. O modo amostrado exige rede para carregar presets inicialmente e faz fallback em falhas. Não foram embutidos bancos SF2 no GitHub/APK. Consulte [SOUNDFONT.md](SOUNDFONT.md).
 
 ### 2. Letras KAR com timestamps
 
@@ -53,7 +53,7 @@ A implementação foi inspirada no fluxo da comunidade (TV como apresentador; ce
 
 ## O que não foi implementado
 
-- Motor completo com amostras SoundFont externas (primeiro medir RAM, CPU, licenças, tamanho e cache).
+- Validação física de SoundFont em TV Box (a integração experimental já foi construída; RAM, CPU, latência e cache ainda exigem teste em hardware).
 - Reconhecimento e conversão dos arquivos proprietários `.mk1` do Microke.
 - Download automático de músicas do YouTube ou distribuição de áudios comerciais no GitHub/APK.
 - Pontuação automática da voz baseada apenas nas trilhas instrumentais do arquivo MIDI.
