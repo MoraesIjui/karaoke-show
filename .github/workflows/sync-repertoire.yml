@@ -1,0 +1,44 @@
+name: Atualizar catálogo de repertório permitido
+on:
+  schedule:
+    - cron: '17 10 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/sync-repertoire.mjs'
+      - '.github/workflows/sync-repertoire.yml'
+permissions:
+  contents: write
+concurrency:
+  group: karaoke-repertoire-index
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Executar testes do indexador
+        run: node --test tests/repertoire-sync.test.mjs
+      - name: Atualizar metadados sem baixar gravações
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JAMENDO_CLIENT_ID: ${{ secrets.JAMENDO_CLIENT_ID }}
+        run: node tools/sync-repertoire.mjs
+      - name: Salvar somente índice público
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/repertoire.json
+          if git diff --cached --quiet; then
+            echo "Catálogo sem alterações."
+          else
+            git commit -m "data(repertoire): sincronizar índice diário de músicas licenciadas [skip ci]"
+            git push origin HEAD:main
+          fi
