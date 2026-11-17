@@ -176,3 +176,50 @@ export async function installOpenTestSong(id,{existingSongs=[],save,onProgress=(
   onProgress('Música salva no aparelho.');
   return {status:'imported',title:parsed.title,artist:parsed.artist};
 }
+
+
+/** Instala uma entrada verificada pelo indexador oficial, nunca áudio arbitrário. */
+export async function installRepertoireUltraStar(item,{existingSongs=[],save,onProgress=()=>{}}={}){
+  if(typeof save!=='function')throw Error('Armazenamento local não configurado.');
+  if(!item || item.source!=='ultrastar'||item.kind!=='karaoke'||item.ready!==true||item.downloadAllowed!==true)
+    throw Error('Esta entrada não possui autorização e dados completos para instalação automática.');
+  const folder=String(item.folder||'');
+  if(!folder.startsWith('Creative Commons/') || folder.includes('..') ||
+     !/^Creative Commons\/[^/]+$/.test(folder) ||
+     item.id!=='ultrastar:'+encodeURIComponent(folder))
+    throw Error('Identificador de fonte UltraStar inválido.');
+  const audioName=safeUltraStarAudioName(item.audioFile);
+  if(audioName.includes('/')||item.audioBytes>25*1024*1024)
+    throw Error('Áudio não suportado ou maior que 25 MB.');
+  const root='https://raw.githubusercontent.com/UltraStar-Deluxe/songs/master/'+folder.split('/').map(encodeURIComponent).join('/')+'/';
+  if(existingSongs.some(song=>keyOf(song)===keyOf(item)))
+    return {status:'duplicate',title:item.title,artist:item.artist};
+  onProgress('Validando letra e licença da fonte…');
+  const [txtBytes,licBytes]=await Promise.all([
+    fetchBounded(root+'song.txt',TEXT_LIMIT),
+    fetchBounded(root+'license.txt',TEXT_LIMIT)
+  ]);
+  const parsed=parseUltraStar(textDecoder(txtBytes));
+  if(keyOf(parsed)!==keyOf(item)||safeUltraStarAudioName(parsed.audioFile)!==audioName)
+    throw Error('A origem alterou os arquivos: atualize o catálogo antes de instalar.');
+  const licenseText=textDecoder(licBytes);
+  const licenses=[...licenseText.matchAll(/(?:https?:\/\/)?creativecommons\.org\/licenses\/([a-z-]+)\/([0-9.]+)/gi)];
+  const first=licenses[0];
+  if(!first || !/^(by|by-sa|by-nc|by-nc-sa)$/i.test(first[1]))
+    throw Error('A licença de áudio mudou ou não autoriza esta importação.');
+  const declared='CC '+first[1].toUpperCase()+' '+first[2];
+  if(item.license!==declared)
+    throw Error('A licença foi alterada: sincronize novamente antes de baixar.');
+  onProgress('Baixando gravação autorizada de '+parsed.title+'…');
+  const bytes=await fetchBounded(root+encodeURIComponent(audioName),AUDIO_LIMIT);
+  const file=new File([bytes],audioName,{type:mime(audioName)});
+  const duration=await detectAudioDuration(file,parsed.duration);
+  const song=await buildUltraStarSong({
+    parsed,audio:file,filename:folder+'/song.txt',licenseText,
+    origin:'https://github.com/UltraStar-Deluxe/songs/tree/master/'+folder.split('/').map(encodeURIComponent).join('/'),
+    fingerprintId:'repertoire:'+item.id,audioDuration:duration
+  });
+  await save(song);
+  onProgress('Gravada no aparelho: '+song.title);
+  return {status:'imported',title:song.title,artist:song.artist,bytes:bytes.length};
+}
