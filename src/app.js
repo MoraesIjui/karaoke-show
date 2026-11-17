@@ -6,7 +6,9 @@ import { MidiAudioEngine } from './midi-audio.js';
 import { SampledMidiAudioEngine } from './soundfont-audio.js';
 import { isMidiName, parseMidiFile } from './midi.js';
 import { importKaraokeZip } from './zip-batch.js';
-import { importUltraStarZip, installOpenTestSong, OPEN_TEST_SONGS } from './ultrastar-import.js';
+import { importUltraStarZip, installOpenTestSong, installRepertoireUltraStar, OPEN_TEST_SONGS } from './ultrastar-import.js';
+import { readRepertoirePreferences,saveRepertoirePreferences,fetchRepertoireIndex,filterRepertoire,downloadableRepertoire } from './repertoire.js';
+import { renderRepertoirePage } from './repertoire-ui.js';
 import { midi4youSuggestions, midi4youGenres, midi4youSongUrl, filterMidi4YouSongs } from './midi4you-catalog.js';
 import { parseLrc, parseNoteMap, addNotesToLines, fileAudioDuration } from './importer.js';
 import { DEFAULT_SETTINGS, readLocal, persistLocal, listImports, saveImport, removeImport, cleanSinger } from './storage.js';
@@ -22,7 +24,9 @@ const state = {
   activeQueueId: null, singerOnStage: '', isPaused: false, result: null,
   raf: null, lastSampleTime: -Infinity, lastVisualTime: -Infinity,
   lastLyricKey: '', overlay: '', toastTimer: null, installing: null,
-  importBusy: false, cloudSongs: [], cloudError: '', cloudBusy: false, cloudAdmin: false, cloudRecoveryMode: '', midi4youSearch: '', midi4youGenre: 'Todas', zipBusy: false, zipReport: null, zipProgress: '', ultraBusy: false, ultraReport: null, ultraProgress: '', demoBusy: false
+  importBusy: false, cloudSongs: [], cloudError: '', cloudBusy: false, cloudAdmin: false, cloudRecoveryMode: '', midi4youSearch: '', midi4youGenre: 'Todas', zipBusy: false, zipReport: null, zipProgress: '', ultraBusy: false, ultraReport: null, ultraProgress: '', demoBusy: false,
+  repertoireIndex: null, repertoirePrefs: readRepertoirePreferences(), repertoireSearch: '',
+  repertoireBusy: false, repertoireInstalling: false, repertoireProgress: ''
 };
 
 const ICONS = {
@@ -79,7 +83,7 @@ function navItem(id, label, icon) { return `<button type="button" class="nav-lin
 function sidebar() {
   return `<aside class="sidebar"><div class="brand"><span class="brand-icon">${svg('mic', 26)}</span><span class="brand-name">KARAOKE<br/><strong>SHOW</strong></span></div>
     <div class="sidebar-label">MENU PRINCIPAL</div><nav aria-label="Menu principal" class="nav-list">
-    ${navItem('home', 'Início', 'home')}${navItem('songs', 'Explorar músicas', 'music')}${navItem('queue', 'Fila de apresentações', 'queue')}${navItem('ranking', 'Ranking', 'trophy')}${navItem('cloud', 'Biblioteca da família', 'upload')}${navItem('midi4you', 'Descobrir MIDI', 'music')}${navItem('family-remote', 'Controle pelo celular', 'monitor')}${navItem('settings', 'Configurações', 'settings')}</nav>
+    ${navItem('home', 'Início', 'home')}${navItem('songs', 'Explorar músicas', 'music')}${navItem('queue', 'Fila de apresentações', 'queue')}${navItem('ranking', 'Ranking', 'trophy')}${navItem('cloud', 'Biblioteca da família', 'upload')}${navItem('repertoire', 'Repertório automático', 'music')}${navItem('midi4you', 'Descobrir MIDI', 'music')}${navItem('family-remote', 'Controle pelo celular', 'monitor')}${navItem('settings', 'Configurações', 'settings')}</nav>
     <div class="sidebar-spacer"></div><div class="sidebar-promo"><span class="promo-spark">✦</span><strong>Sua sala, seu palco.</strong><p>Cante, pontue e desafie seus amigos. Sem assinatura.</p><button data-action="navigate" data-page="import" class="subtle-link">${svg('plus',16)} Importar música</button></div>
     <div class="side-footer">v0.1 • First Stage<br/>Funciona offline após instalar</div></aside>`;
 }
@@ -382,7 +386,10 @@ function render() {
   else {
     const body = {
       home: renderHome, songs: renderSongs, queue: renderQueue, ranking: renderRanking,
-      settings: renderSettings, setup: renderSetup, import: renderImport, cloud: renderCloud, midi4you: renderMidi4You, 'family-remote': renderFamilyRemote
+      settings: renderSettings, setup: renderSetup, import: renderImport, cloud: renderCloud, midi4you: renderMidi4You,
+      repertoire: () => renderRepertoirePage({ index:state.repertoireIndex,prefs:state.repertoirePrefs,
+        search:state.repertoireSearch,installed:state.imported,
+        busy:state.repertoireBusy||state.repertoireInstalling,progress:state.repertoireProgress,header,esc }), 'family-remote': renderFamilyRemote
     }[state.page] || renderHome;
     app.innerHTML = `<div class="app-layout">${sidebar()}<div class="main-wrapper">${topbar()}<main class="page-content" id="main">${body()}</main></div></div>`;
   }
@@ -711,6 +718,9 @@ async function handleAction(action, el) {
     case 'cloud-refresh': await refreshCloud(true); break;
     case 'install-ultrastar-demo': await handleDemoInstall([el.dataset.demo]); break;
     case 'install-ultrastar-demos': await handleDemoInstall(OPEN_TEST_SONGS.map(x=>x.id)); break;
+    case 'repertoire-refresh': await loadRepertoireIndex(true); break;
+    case 'repertoire-install': await handleRepertoireInstall([el.dataset.song]); break;
+    case 'repertoire-install-batch': await handleRepertoireInstall(null); break;
     case 'midi4you-filter': state.midi4youGenre=el.dataset.genre || 'Todas'; render(); break;
     case 'cloud-recovery-toggle': state.cloudRecoveryMode = state.cloudRecoveryMode ? '' : 'request'; state.cloudError=''; render(); break;
     case 'cloud-logout': logoutAdmin(); state.cloudAdmin = false; state.cloudSongs=[]; state.cloudError=''; render(); break;
@@ -753,6 +763,24 @@ app.addEventListener('click', event => {
   if (!button || button.disabled) return;
   handleAction(button.dataset.action, button).catch(err => notify(`Falha: ${err.message}`, 'error'));
 });
+app.addEventListener('change',event=>{
+  const el=event.target;
+  const prefs=state.repertoirePrefs;
+  const genre=el.dataset?.repertoireGenre;
+  const key=el.dataset?.repertoirePref;
+  if(!genre&&!key)return;
+  if(genre){
+    prefs.genres=el.checked
+      ? [...new Set([...prefs.genres,genre])]
+      : prefs.genres.filter(x=>x!==genre);
+  } else if(key==='autoInstall') prefs.autoInstall=!!el.checked;
+  else if(['country','language','type'].includes(key))prefs[key]=el.value;
+  else if(key==='quantity')prefs.quantity=Number(el.value);
+  state.repertoirePrefs=saveRepertoirePreferences(prefs);
+  render();
+  if(key==='autoInstall'&&state.repertoirePrefs.autoInstall)
+    maybeAutoInstall().catch(error=>notify('Instalação automática: '+error.message,'error'));
+});
 app.addEventListener('submit', event => {
   if (event.target.id === 'import-form') { event.preventDefault(); handleImport(event.target); }
   if (event.target.id === 'zip-import-form') { event.preventDefault(); handleZipImport(event.target); }
@@ -764,6 +792,12 @@ app.addEventListener('submit', event => {
 });
 app.addEventListener('input', event => {
   const target = event.target;
+  if (target.id === 'repertoire-search') {
+    state.repertoireSearch=target.value;
+    const pos=target.selectionStart;render();
+    const input=document.getElementById('repertoire-search');
+    input?.focus();input?.setSelectionRange(pos,pos);return;
+  }
   if (target.id === 'midi4you-search') { state.midi4youSearch=target.value; const pos=target.selectionStart; render(); const input=document.getElementById('midi4you-search'); input?.focus(); input?.setSelectionRange(pos,pos); return; }
   if (target.id === 'song-search') { state.search = target.value; const p = target.selectionStart; render(); const input = document.getElementById('song-search'); input?.focus(); input?.setSelectionRange(p,p); return; }
   if (target.id === 'singer') { data.singer = cleanSinger(target.value); save(); return; }
@@ -860,6 +894,7 @@ async function boot() {
   render();
   if (cloudUser()) { try { state.cloudAdmin = await verifyAdmin(); } catch {} }
   await refreshCloud();
+  await loadRepertoireIndex(false);
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
