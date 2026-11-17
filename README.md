@@ -15,7 +15,7 @@
 2. O upload fica na tela **Biblioteca da família**, mediante login administrativo do Supabase Auth; habilite o administrador conforme `supabase/ADMIN-SETUP.md`.
 3. São aceitos **MP3, WAV, OGG, M4A, MP4, MID, MIDI e KAR**, limite de 25 MB no catálogo privado. Letras **LRC** e mapa de notas **JSON** são opcionais; arquivos KAR podem conter letras incorporadas.
 4. Compartilhe no catálogo privado apenas arquivos cujo uso e compartilhamento sejam permitidos. A distribuição de músicas de terceiros continua sujeita a direitos autorais.
-5. Arquivos MIDI/KAR são sintetizados com Web Audio em timbres simples. A pontuação exige notas vocais de referência.
+5. Arquivos MIDI/KAR têm dois motores: síntese leve offline por Web Audio (padrão) ou reprodução com SoundFont FluidR3 amostrado (experimental e sob demanda). A pontuação exige notas vocais de referência.
 
 ## Importação de ZIP em lote (somente local)
 
@@ -26,8 +26,15 @@ Use **Importar música → Importar um ZIP de músicas em lote** para abrir um a
 - **Instrumentos MIDI melhorados:** perfis de timbres GM em `src/gm-timbres.js`, modos Econômico/Equilibrado/Rico, ambiência e chave de bateria MIDI.
 - **Letras KAR detalhadas:** parser `src/kar-lyrics.js` preserva tempos de palavras e sílabas.
 - **Controle familiar pelo celular (APK Android):** nova tela **Controle pelo celular**, QR code e servidor local protegido por token. Celular e TV Box devem estar na mesma rede. Adiciona músicas à fila, sem enviar arquivos ou senhas ao telefone.
-- **Limite:** ainda não temos SoundFont amostrado real, suporte Microke MK1 ou validação do controle LAN em TV Box física.
+- **SoundFont real experimental:** motor MIDI amostrado WebAudioFonts/FluidR3 (código MIT, amostras FluidR3 com atribuição), baixado apenas quando selecionado nas configurações. Os presets ficam em cache quando o navegador permite, com retorno automático à síntese leve em caso de indisponibilidade.
+- **Limitações:** sem MK1 Microke e sem validação física concluída de RAM, microfone, SoundFont ou controle LAN em TV Box.
 - Consulte [docs/INTEGRACAO-COMUNIDADE-2026.md](docs/INTEGRACAO-COMUNIDADE-2026.md) para funcionamento, segurança, atribuição de licença e roteiro de testes.
+
+## Som com SoundFont amostrado (opcional)
+
+Em **Configurações → Som e acompanhamento → Motor de instrumentos MIDI**, selecione **SoundFont real (experimental)**. O aplicativo usa a biblioteca [midi-audio-player](https://github.com/WebAudioFonts/midi-audio-player) versão 2.0.3 (MIT) e procura instrumentos do banco FluidR3, distribuído sob licença MIT com atribuição. Os bancos de instrumentos **não** são distribuídos com o APK: exigem internet no primeiro uso e podem ser mantidos em cache no armazenamento do aparelho. Se faltar banco, memória, suporte do WebView ou rede, a música toca no sintetizador leve, com aviso.
+
+Esse recurso não baixa, publica nem envia as músicas pessoais para servidores de instrumentos. A qualidade final depende da TV Box e dos presets disponíveis. Consulte [docs/SOUNDFONT.md](docs/SOUNDFONT.md).
 
 ## Pesquisa de repositórios GitHub
 
