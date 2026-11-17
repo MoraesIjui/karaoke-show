@@ -69,3 +69,14 @@ A implementação foi inspirada no fluxo da comunidade (TV como apresentador; ce
 6. Teste o controle remoto físico, o microfone e o ranking. Interrompa a sessão se houver latência excessiva, consumo alto de memória ou queda do áudio.
 
 **Importante:** ferramentas de análise e testes automatizados verificam sintaxe, casos unitários e build; somente o teste no dispositivo físico poderá confirmar a qualidade sonora, a sincronização percebida e a conexão LAN.
+
+## Validação complementar com o ZIP do usuário (17/11/2026)
+
+O APK compilado foi aberto localmente e os arquivos JavaScript **incluídos no próprio APK** (`midi.js` e `kar-lyrics.js`) foram executados diretamente contra os 69 KAR do ZIP fornecido pelo usuário, sem publicar ou enviar músicas ao GitHub:
+
+- **69 KAR analisados, 69 válidos, 0 erros** de parser;
+- **69 arquivos com eventos de letra reconstruídos**;
+- Total de **2.950 linhas** de letra identificadas;
+- Total de **393.284 eventos de notas** nas 69 faixas.
+
+Isso confirma compatibilidade técnica da leitura MIDI/legendas no código distribuído. **Não comprova fidelidade acústica, legibilidade perfeita, sincronização perceptiva nem desempenho em hardware real**, que precisam do teste na TV Box.
