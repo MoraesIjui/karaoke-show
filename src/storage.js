@@ -2,6 +2,7 @@ const KEY = 'karaoke-show-data-v1';
 export const DEFAULT_SETTINGS = {
   volume: 0.78,
   midiQuality: 'equilibrado',
+  midiEngine: 'light',
   midiReverb: true,
   midiDrums: true,
   guide: true,
