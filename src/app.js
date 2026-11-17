@@ -77,7 +77,7 @@ function navItem(id, label, icon) { return `<button type="button" class="nav-lin
 function sidebar() {
   return `<aside class="sidebar"><div class="brand"><span class="brand-icon">${svg('mic', 26)}</span><span class="brand-name">KARAOKE<br/><strong>SHOW</strong></span></div>
     <div class="sidebar-label">MENU PRINCIPAL</div><nav aria-label="Menu principal" class="nav-list">
-    ${navItem('home', 'Início', 'home')}${navItem('songs', 'Explorar músicas', 'music')}${navItem('queue', 'Fila de apresentações', 'queue')}${navItem('ranking', 'Ranking', 'trophy')}${navItem('cloud', 'Biblioteca da família', 'upload')}${navItem('midi4you', 'Descobrir MIDI', 'music')}${navItem('settings', 'Configurações', 'settings')}</nav>
+    ${navItem('home', 'Início', 'home')}${navItem('songs', 'Explorar músicas', 'music')}${navItem('queue', 'Fila de apresentações', 'queue')}${navItem('ranking', 'Ranking', 'trophy')}${navItem('cloud', 'Biblioteca da família', 'upload')}${navItem('midi4you', 'Descobrir MIDI', 'music')}${navItem('family-remote', 'Controle pelo celular', 'monitor')}${navItem('settings', 'Configurações', 'settings')}</nav>
     <div class="sidebar-spacer"></div><div class="sidebar-promo"><span class="promo-spark">✦</span><strong>Sua sala, seu palco.</strong><p>Cante, pontue e desafie seus amigos. Sem assinatura.</p><button data-action="navigate" data-page="import" class="subtle-link">${svg('plus',16)} Importar música</button></div>
     <div class="side-footer">v0.1 • First Stage<br/>Funciona offline após instalar</div></aside>`;
 }
@@ -136,6 +136,45 @@ function renderRanking() {
   <div class="ranking-top"><div class="stat-tile"><span>RECORDES REGISTRADOS</span><b>${data.results.length}</b></div><div class="stat-tile"><span>MAIOR PONTUAÇÃO</span><b>${formatPoints(bestResult())}</b></div><div class="stat-tile"><span>PARTICIPANTES</span><b>${singersCount()}</b></div></div>
   ${results.length ? `<div class="ranking-list">${results.map((r,i) => `<div class="ranking-row"><div class="rank-index ${i<3?'podium':''}">${i===0?'🏆':i===1?'🥈':i===2?'🥉':String(i+1).padStart(2,'0')}</div><div class="ranking-name"><strong>${esc(r.singer)}</strong><span>${esc(r.songTitle)} · ${new Date(r.date).toLocaleDateString('pt-BR')}</span></div><span class="ranking-grade">${esc(rankFromScore(r.score).level)}</span><b class="ranking-score">${formatPoints(r.score)}</b></div>`).join('')}</div><button class="text-button clear-ranking" data-action="clear-ranking">${svg('trash',16)} Limpar ranking local</button>` : `<div class="empty">${svg('trophy',54)}<h3>O palco espera sua primeira estrela!</h3><p>Conecte um microfone e cante uma das músicas originais para registrar sua pontuação.</p><button class="btn btn-primary" data-action="navigate" data-page="songs">Cantar agora</button></div>`}`;
 }
+
+function remotePairingUrl() {
+  try{return globalThis.KaraokeBridge?.getRemoteUrl?.() || '';}catch{return '';}
+}
+function updateRemoteCatalog() {
+  try {
+    if(typeof globalThis.KaraokeBridge?.updateCatalog==='function') {
+      // Enviar somente nomes e IDs à página do celular, jamais arquivos, letras, tokens ou senhas.
+      const catalog=songs().slice(0,350).map(({id,title,artist})=>({id,title,artist}));
+      globalThis.KaraokeBridge.updateCatalog(JSON.stringify(catalog));
+    }
+  }catch{}
+}
+function renderFamilyRemote() {
+  const url=remotePairingUrl();
+  const isAndroid=typeof globalThis.KaraokeBridge?.getRemoteUrl==='function';
+  return `${header('Controle pelo celular','Adicione músicas à fila pelo Wi-Fi de casa, sem internet e sem login de convidados.')}
+  <section class="panel family-remote-panel">
+    <h2>Conectar celulares à TV Box</h2>
+    ${url ? `<p class="muted">Conecte o celular e a TV Box à mesma rede Wi-Fi. Escaneie o QR code ou digite o endereço abaixo no navegador do celular.</p>
+      <div class="family-remote-pair"><div id="family-remote-qr" class="family-remote-qr" role="img" aria-label="QR code de pareamento"></div>
+      <div class="family-remote-link"><strong>Endereço de pareamento</strong><div class="family-remote-url">${esc(url)}</div>
+      <p class="small-muted">O link contém uma chave temporária desta sessão. Somente compartilhe com convidados da sua casa. Reinicie o aplicativo para gerar um novo link.</p>
+      </div></div>`
+    : isAndroid ? '<p class="muted">Não foi possível iniciar o controle Wi-Fi. Verifique se a TV Box está conectada a uma rede local (Wi-Fi ou cabo) e reinicie o aplicativo.</p>'
+    : '<p class="muted">O controle via celular funciona no APK instalado na TV Box Android. O site no GitHub Pages não possui servidor de rede local.</p>'}
+    <h3>O que os celulares podem fazer?</h3>
+    <p class="muted">Pesquisar músicas já importadas na TV, informar o nome do cantor e entrar na fila. A TV continua responsável pela reprodução, pelo microfone e pelas pontuações.</p>
+    <p class="small-muted">Este recurso não transfere músicas, não abre o Supabase aos convidados e não publica a sua coleção na internet.</p>
+  </section>`;
+}
+function showFamilyRemoteQr() {
+  const url=remotePairingUrl(),container=document.getElementById('family-remote-qr');
+  if(!url||!container)return;
+  if(typeof globalThis.QRCode==='function'){
+    try{new globalThis.QRCode(container,{text:url,width:180,height:180,correctLevel:globalThis.QRCode.CorrectLevel.M});}catch{}
+  }
+}
+
 function renderSettings() {
   const s = data.settings;
   return `${header('Configurações', 'Ajuste o palco para o seu microfone, caixa de som e TV.')}
@@ -299,11 +338,13 @@ function render() {
   else {
     const body = {
       home: renderHome, songs: renderSongs, queue: renderQueue, ranking: renderRanking,
-      settings: renderSettings, setup: renderSetup, import: renderImport, cloud: renderCloud, midi4you: renderMidi4You
+      settings: renderSettings, setup: renderSetup, import: renderImport, cloud: renderCloud, midi4you: renderMidi4You, 'family-remote': renderFamilyRemote
     }[state.page] || renderHome;
     app.innerHTML = `<div class="app-layout">${sidebar()}<div class="main-wrapper">${topbar()}<main class="page-content" id="main">${body()}</main></div></div>`;
   }
   if (state.page === 'setup' || state.page === 'settings') updateMeter();
+  if (state.page === 'family-remote') showFamilyRemoteQr();
+  updateRemoteCatalog();
 }
 function setPage(page) {
   if (state.page === 'player' && page !== 'player') stopShow();
@@ -320,8 +361,9 @@ function goSong(id, queueId = null, singer = null) {
   if (singer) data.singer = cleanSinger(singer);
   setPage('setup');
 }
-function enqueue(songId) {
-  data.queue.push({ id: makeId(), songId, singer: cleanSinger(data.singer) });
+function enqueue(songId, singer = data.singer) {
+  if(!songFor(songId))return;
+  data.queue.push({ id: makeId(), songId, singer: cleanSinger(singer) });
   save(); notify('Música adicionada à fila do show.'); render();
 }
 function makeId() { return globalThis.crypto?.randomUUID?.() || `ks-${Date.now()}-${Math.floor(Math.random()*1e6)}`; }
@@ -626,6 +668,12 @@ app.addEventListener('input', event => {
   if (key === 'latencyMs') document.getElementById('latency-label').textContent = `${target.value} ms`;
   if (key === 'reducedMotion') document.body.classList.toggle('reduced-motion', target.checked);
   save();
+});
+window.addEventListener('karaoke-remote-command', event => {
+  const request=event.detail;
+  if(!request || request.type!=='enqueue' || typeof request.songId!=='string' || !songFor(request.songId))return;
+  enqueue(request.songId,typeof request.singer==='string'?request.singer:'Convidado');
+  if(state.page!=='player')render();
 });
 window.addEventListener('online', () => { if (state.page !== 'player') render(); });
 window.addEventListener('offline', () => { if (state.page !== 'player') render(); });
