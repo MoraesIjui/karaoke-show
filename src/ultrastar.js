@@ -42,13 +42,9 @@ export function parseUltraStar(text) {
   if(typeof text!=='string'||text.length>MAX_TEXT||!text.trim())
     throw Error('Arquivo UltraStar TXT vazio ou acima de 1 MB.');
   const header={};
-  const lines=[],pieces=[];
-  let noteCount=0,voice=1,duet=false,ended=false;
-  const flush=()=>{
-    const line=intoLine(pieces);
-    if(line)lines.push(line);
-    pieces.length=0;
-  };
+  const verses=[];
+  let pending=[],noteCount=0,voice=1,duet=false;
+  const flush=()=>{if(pending.length)verses.push(pending);pending=[];};
   for(const raw of text.replace(/^\uFEFF/,'').split(/\r?\n|\r/g)){
     const line=raw.trim();
     if(!line)continue;
@@ -57,7 +53,7 @@ export function parseUltraStar(text) {
       if(pos>1)header[line.slice(1,pos).trim().toUpperCase()]=line.slice(pos+1).trim();
       continue;
     }
-    if(line==='E'){ended=true;break;}
+    if(line==='E')break;
     if(/^P[1-9]$/.test(line)){
       voice=Number(line[1]);
       if(voice!==1)duet=true;
@@ -65,14 +61,12 @@ export function parseUltraStar(text) {
     }
     if(line.startsWith('-')){if(voice===1)flush();continue;}
     const match=raw.match(/^\s*([:*FGR])\s+(-?\d+)\s+(\d+)\s+(-?\d+)\s(.*)$/i);
-    if(!match)continue;
-    if(voice!==1)continue;
-    const [,typeValue,beatValue,lengthValue,pitchValue,rawText]=match;
-    const type=typeValue.toUpperCase();
-    const beat=Number(beatValue),length=Number(lengthValue),pitch=Number(pitchValue);
-    if(!Number.isSafeInteger(beat)||!Number.isSafeInteger(length)||!Number.isSafeInteger(pitch)||length<=0 || Math.abs(beat)>1000000)
+    if(!match||voice!==1)continue;
+    const type=match[1].toUpperCase();
+    const beat=Number(match[2]),length=Number(match[3]),pitch=Number(match[4]);
+    if(!Number.isSafeInteger(beat)||!Number.isSafeInteger(length)||!Number.isSafeInteger(pitch)||length<=0||Math.abs(beat)>1000000)
       throw Error('Notas UltraStar inválidas.');
-    pieces.push({type,beat,length,pitch,raw:rawText,golden:type==='*'});
+    pending.push({type,beat,length,pitch,raw:match[5],golden:type==='*'});
     if(++noteCount>MAX_NOTES)throw Error('UltraStar possui notas demais.');
   }
   flush();
@@ -83,54 +77,31 @@ export function parseUltraStar(text) {
   if(!Number.isFinite(bpm)||bpm<=0||bpm>1800||!Number.isFinite(gap)||Math.abs(gap)>MAX_SECONDS*1000)
     throw Error('BPM ou GAP UltraStar inválido.');
   const audioFile=safeMediaName(header.AUDIO||header.MP3||header.INSTRUMENTAL);
-  if(!header.TITLE||!header.ARTIST||!lines.length)
+  if(!header.TITLE||!header.ARTIST||!verses.length)
     throw Error('UltraStar requer TITLE, ARTIST e notas com letra.');
   const durationPerBeat=60/(bpm*4);
-  // Recalcular com o tempo real, preservando intervalos sem canto.
-  for(const line of lines){
-    // Extração antes do mapeamento: stored via note metadata on each word.
-    // Items são transferidos com suas propriedades beat/length abaixo.
-    // Temporarily: reconstruct from ordered source note lines collected separately.
-  }
-  // See timedLines below: reparse note events in order for strict alignment.
-  const timedLines=[];
-  let notes=[],currentVoice=1;
-  const makeTimed=()=>{
-    if(!notes.length)return;
-    const items=notes.map(n=>{
+  const lines=[];
+  for(const verse of verses){
+    const items=verse.map(n=>{
       const start=Math.max(0,gap/1000+n.beat*durationPerBeat);
       const end=Math.max(start+.04,gap/1000+(n.beat+n.length)*durationPerBeat);
       const midi=60+n.pitch;
       return {start,end,raw:n.raw,type:n.type,golden:n.golden,
-        midi: (n.type===':'||n.type==='*')&&midi>=24&&midi<=108 ? midi : undefined};
+        midi:(n.type===':'||n.type==='*')&&midi>=24&&midi<=108 ? midi : undefined};
     });
-    const item=intoLine(items);
-    if(item)timedLines.push(item);
-    notes=[];
-  };
-  let count=0;
-  for(const raw of text.replace(/^\uFEFF/,'').split(/\r?\n|\r/g)){
-    const line=raw.trim();
-    if(line==='E')break;
-    if(/^P[1-9]$/.test(line)){currentVoice=Number(line[1]);continue;}
-    if(line.startsWith('-')){if(currentVoice===1)makeTimed();continue;}
-    const match=raw.match(/^\s*([:*FGR])\s+(-?\d+)\s+(\d+)\s+(-?\d+)\s(.*)$/i);
-    if(!match||currentVoice!==1)continue;
-    const type=match[1].toUpperCase();
-    notes.push({type,beat:Number(match[2]),length:Number(match[3]),pitch:Number(match[4]),raw:match[5],golden:type==='*'});
-    if(++count>MAX_NOTES)break;
+    const line=intoLine(items);
+    if(line)lines.push(line);
   }
-  makeTimed();
-  if(!timedLines.length)throw Error('UltraStar não possui versos reproduzíveis.');
-  const endTime=Math.max(...timedLines.map(l=>l.end));
+  if(!lines.length)throw Error('UltraStar não possui versos reproduzíveis.');
+  const endTime=Math.max(...lines.map(l=>l.end));
   if(endTime>MAX_SECONDS)throw Error('UltraStar acima do limite de 30 minutos.');
   return {
     title:header.TITLE.slice(0,80),artist:header.ARTIST.slice(0,80),
     genre:(header.GENRE||'UltraStar').slice(0,80),language:(header.LANGUAGE||'').slice(0,60),
     audioFile,bpm,gapMs:gap,
-    duration:Math.max(1,endTime+2),lines:timedLines,
-    noteCount:count,version:header.VERSION||'unversioned',
-    source:'UltraStar TXT',hasGold:timedLines.some(x=>x.words.some(w=>w.golden))
+    duration:Math.max(1,endTime+2),lines,
+    noteCount,version:header.VERSION||'unversioned',
+    source:'UltraStar TXT',hasGold:lines.some(x=>x.words.some(w=>w.golden))
   };
 }
 export function safeUltraStarAudioName(name){return safeMediaName(name);}
