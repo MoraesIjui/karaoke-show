@@ -17,6 +17,12 @@
 4. Compartilhe no catálogo privado apenas arquivos cujo uso e compartilhamento sejam permitidos. A distribuição de músicas de terceiros continua sujeita a direitos autorais.
 5. Arquivos MIDI/KAR têm dois motores: síntese leve offline por Web Audio (padrão) ou reprodução com SoundFont FluidR3 amostrado (experimental e sob demanda). A pontuação exige notas vocais de referência.
 
+## UltraStar: letras, áudio e notas de referência
+
+A importação **UltraStar** recebe um ZIP com `song.txt` e áudio MP3/OGG em cada pasta, converte **BPM/GAP, sílabas e notas** para o formato usado pelo Karaoke Show e permite pontuar quando conectado a microfone compatível. As faixas ficam no próprio dispositivo; `license.txt` é preservado e pode ser consultado na página da música.
+
+Há dois exemplos Creative Commons de **uso não comercial** para instalação por clique (Jonathan Coulton — *Monkey Shines*; Shearer — *In My Hand*), obtidos diretamente da origem, sem inserir músicas de terceiros no APK. Consulte [docs/ULTRASTAR.md](docs/ULTRASTAR.md) para créditos, licenças e limites.
+
 ## Importação de ZIP em lote (somente local)
 
 Use **Importar música → Importar um ZIP de músicas em lote** para abrir um arquivo `.zip` com `.kar`, `.mid` ou `.midi`. O aplicativo verifica CRC, detecta duplicatas, identifica títulos/artistas pelo nome do arquivo e lista `.mk1` e `.alb` como não suportados. As músicas ficam no IndexedDB do aparelho, sem upload ao Supabase. Veja [docs/IMPORTACAO-ZIP.md](docs/IMPORTACAO-ZIP.md).
