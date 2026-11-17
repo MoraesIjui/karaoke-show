@@ -2,6 +2,16 @@
 
 > **Contexto consolidado em 17/11/2026:** referências de [11 repositórios de karaokê no GitHub](REFERENCIAS-GITHUB-KARAOKE.md) foram adicionadas ao planejamento. A lista abaixo é histórica e não reflete integralmente os recursos já entregues. O projeto passou a ter finalidade **pessoal/familiar**, sem distribuição comercial planejada.
 
+## UltraStar e repertório para teste (17/11/2026)
+
+- [x] Parser UltraStar TXT com BPM, GAP, notas de voz e letras por sílaba
+- [x] Importação local de ZIP com `song.txt`, áudio e `license.txt`
+- [x] Instalação opcional de 2 músicas Creative Commons diretamente do repositório oficial, com atribuição
+- [ ] Validar os MP3/OGG reais, o microfone e as pontuações na TV Box física
+- [ ] Suporte a duetos, `#RELATIVE:yes`, edição de notas e importação USDB
+
+Ver [docs/ULTRASTAR.md](ULTRASTAR.md).
+
 ## Recursos implementados a partir da pesquisa (17/11/2026)
 
 - [x] Novo parser de letras KAR com tempos de palavras/sílabas (`src/kar-lyrics.js`)
