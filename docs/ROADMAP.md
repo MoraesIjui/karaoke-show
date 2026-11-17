@@ -1,5 +1,19 @@
 # Roadmap do Karaoke Show
 
+> **Contexto consolidado em 17/11/2026:** referências de [11 repositórios de karaokê no GitHub](REFERENCIAS-GITHUB-KARAOKE.md) foram adicionadas ao planejamento. A lista abaixo é histórica e não reflete integralmente os recursos já entregues. O projeto passou a ter finalidade **pessoal/familiar**, sem distribuição comercial planejada.
+
+## Próximas melhorias derivadas da pesquisa GitHub
+
+- [ ] **P1 — Instrumentos MIDI melhores:** avaliar `WebAudioFonts/midi-audio-player` (MIT), recursos SoundFont, efeitos, sincronização KAR e uso de memória em TV Box
+- [ ] **P1 — Letras KAR:** comparar a leitura de eventos MIDI/KAR com `fraigo/karaoke-player` (MIT), corrigir formatos de quebras e sílabas com testes reais
+- [ ] **P2 — Biblioteca local em TV Box:** estudar importação por pasta/pendrive sem enviar músicas à nuvem; preservar acervo ao atualizar o APK
+- [ ] **P2 — Controle pelo celular:** QR e fila local, inspirados em KaraokeNatin e vkara; sem depender de vídeos YouTube
+- [ ] **P3 — Pontuação avançada:** notas vocais confiáveis e calibração física, tomando Nightingale, UltraStar Deluxe, Vocaluxe e Performous como referências arquiteturais
+- [ ] **Pesquisa MK1:** estudar o formato proprietário Microke com arquivos reais, sem prometer compatibilidade ou conversão automática
+
+**Já entregue em etapas posteriores ao roteiro inicial:** APK debug, leitura KAR/MID, importação em lote ZIP, biblioteca familiar autenticada e seção Descobrir MIDI. A execução física na TV Box, som SoundFont e compatibilidade MK1 seguem pendentes.
+
+
 ## Versão 0.1 — First Stage (base atual)
 
 - [x] Site offline-first e PWA instalável (em navegadores que suportem)
