@@ -22,7 +22,7 @@
 
 ## Proteções para TV Boxes de 1 GB
 
-- Limita a **18 programas de instrumentos** distintos por MIDI; arquivos que superarem esse número voltam ao motor leve.
+- Limite adaptativo de instrumentos MIDI simultâneos por faixa: **8 programas em aparelhos que informam até 1 GB de RAM**, **12 até 2 GB**, **18 acima de 2 GB** e **12 quando o WebView não informa a memória**. Faixas que excederem o limite voltam ao sintetizador leve.
 - Limite de **20 segundos** para a preparação dos presets, para evitar que o aplicativo permaneça bloqueado esperando downloads por muito tempo.
 - Presets preferidos/requeridos: `FluidR3_GM`, `FluidR3Mono` e `FluidR3`. Quando a família FluidR3 não é encontrada para todos os programas utilizados, o modo amostrado não faz download silencioso de outro SoundFont: utiliza o motor leve.
 - O motor não prepara bancos amostrados quando o usuário não selecionou o modo SoundFont.
@@ -37,7 +37,7 @@
 
 - `npm test`, `npm run check` e `npm run build`: aprovados via GitHub Actions.
 - Compilação Android TV debug: aprovada via GitHub Actions.
-- A leitura dos 69 KAR do pacote do usuário foi verificada no parser MIDI da versão anterior. Uma análise adicional de seus eventos indica **68 com até 18 programas MIDI** e **1 com 22** (fora do limite do modo SoundFont; ela retorna ao modo leve).
+- A leitura dos 69 KAR do pacote do usuário foi verificada no parser MIDI da versão anterior. Uma análise adicional dos eventos indica **68 faixas com até 18 programas MIDI** e **1 com 22**. O limite dinâmico em aparelhos de 1 GB é de 8 programas, portanto várias das 69 faixas usarão automaticamente o sintetizador leve.
 - **Pendente:** teste acústico real com presets FluidR3 no navegador e na TV Box, medição de RAM/CPU, verificação do endpoint, teste de decodificação dos formatos de amostra no WebView, persistência do cache e latência sonora.
 
 ## Arquivos
